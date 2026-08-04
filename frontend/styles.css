@@ -113,18 +113,31 @@ p  { color: #475569; }
   padding: 20px 18px 18px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 14px rgba(0,0,0,0.06);
   border-top: 4px solid #1a237e;
+  border-left: 1.5px solid transparent;
+  border-right: 1.5px solid transparent;
+  border-bottom: 1.5px solid transparent;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  transition: transform 0.18s, box-shadow 0.18s;
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
   cursor: default;
 }
-.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  border-color: #c7d2fe;
+  border-top-color: #1a237e;
+}
 .stat-card.green  { border-top-color: #16a34a; }
+.stat-card.green:hover  { border-color: #bbf7d0; border-top-color: #16a34a; }
 .stat-card.orange { border-top-color: #ea580c; }
+.stat-card.orange:hover { border-color: #fed7aa; border-top-color: #ea580c; }
 .stat-card.red    { border-top-color: #dc2626; }
+.stat-card.red:hover    { border-color: #fecaca; border-top-color: #dc2626; }
 .stat-card.purple { border-top-color: #7c3aed; }
+.stat-card.purple:hover { border-color: #ddd6fe; border-top-color: #7c3aed; }
 .stat-card.teal   { border-top-color: #0d9488; }
+.stat-card.teal:hover   { border-color: #99f6e4; border-top-color: #0d9488; }
 .stat-label {
   font-size: 11px;
   color: #94a3b8;
@@ -276,7 +289,7 @@ tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: #f8faff; }
 tbody td { padding: 11px 14px; vertical-align: middle; color: #334155; }
 
-/* ── Badges ── */
+/* ── Badge hover — subtle dark outline on hover ── */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -286,13 +299,25 @@ tbody td { padding: 11px 14px; vertical-align: middle; color: #334155; }
   font-weight: 700;
   letter-spacing: 0.2px;
   white-space: nowrap;
+  transition: filter 0.15s, box-shadow 0.15s, border-color 0.15s;
+  cursor: default;
+}
+.badge:hover {
+  filter: brightness(0.94);
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.12);
 }
 .badge-passed      { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.badge-passed:hover  { border-color: #16a34a; }
 .badge-failed      { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.badge-failed:hover  { border-color: #dc2626; }
 .badge-submitted   { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.badge-submitted:hover { border-color: #2563eb; }
 .badge-shortlisted { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.badge-shortlisted:hover { border-color: #166534; }
 .badge-rejected    { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+.badge-rejected:hover  { border-color: #991b1b; }
 .badge-reviewing   { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+.badge-reviewing:hover { border-color: #c2410c; }
 .badge-sm { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 
 /* Score colors */
@@ -307,10 +332,19 @@ tbody td { padding: 11px 14px; vertical-align: middle; color: #334155; }
   border-radius: 20px;
   font-weight: 700;
   font-size: 13px;
+  transition: filter 0.15s, box-shadow 0.15s, border-color 0.15s;
+  cursor: default;
+}
+.score-pill:hover {
+  filter: brightness(0.93);
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.12);
 }
 .score-pill.score-high { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.score-pill.score-high:hover { border-color: #16a34a; }
 .score-pill.score-mid  { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+.score-pill.score-mid:hover  { border-color: #ea580c; }
 .score-pill.score-low  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.score-pill.score-low:hover  { border-color: #dc2626; }
 
 /* ── Score Circle (candidate profile) ── */
 .score-circle {
@@ -415,8 +449,39 @@ tbody td { padding: 11px 14px; vertical-align: middle; color: #334155; }
 
 /* ── Info Grid (profile) ── */
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.info-item {
+  padding: 10px 13px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  cursor: default;
+}
+.info-item:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 2px 8px rgba(79,70,229,0.08);
+  background: #f8faff;
+}
 .info-item .label { font-size: 11px; text-transform: uppercase; color: #94a3b8; margin-bottom: 3px; font-weight: 700; letter-spacing: 0.4px; }
 .info-item .value { font-size: 14.5px; color: #1e293b; font-weight: 500; }
+
+/* ── Skill Tags ── */
+.skill-tag {
+  background: #e8eaf6;
+  color: #1a237e;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1.5px solid transparent;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  cursor: default;
+  display: inline-block;
+}
+.skill-tag:hover {
+  border-color: #7986cb;
+  background: #dde0f5;
+  box-shadow: 0 0 0 2px rgba(63,81,181,0.12);
+}
 
 /* ── Rank Badge (analytics table) ── */
 .rank-badge {
