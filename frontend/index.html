@@ -35,32 +35,34 @@
             <button id="startBtn" onclick="startAssessment()">Start Assessment</button>
         </div>
 
-        <!-- Step 2: Take the test -->
-        <div id="testSection" style="display:none;">
-            <div id="timer">--:--</div>
-            <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:100%"></div></div>
+        <!-- Step 1b: Candidate Info (before timer starts) -->
+        <div id="candidateInfoSection" style="display:none;">
+            <h2 style="color:#1a237e;font-size:17px;margin-bottom:4px;">Your Details</h2>
+            <p style="font-size:13px;color:#888;margin-bottom:16px;">Fill in your details before the test begins. The timer starts after you click <strong>Begin Test</strong>.</p>
 
-            <input type="text" id="name" placeholder="Full Name *">
-            <input type="email" id="email" placeholder="Email Address *">
+            <label style="font-weight:bold;">Full Name *</label>
+            <input type="text" id="name" placeholder="Your full name">
 
-            <!-- Portfolio / GitHub links -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-                <div style="position:relative;">
-                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;">🐙</span>
-                    <input type="url" id="githubUrl" placeholder="GitHub URL (optional)"
-                        style="padding-left:34px;margin-bottom:0;">
-                </div>
-                <div style="position:relative;">
-                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;">🌐</span>
-                    <input type="url" id="portfolioUrl" placeholder="Portfolio URL (optional)"
-                        style="padding-left:34px;margin-bottom:0;">
-                </div>
+            <label style="font-weight:bold;">Email Address *</label>
+            <input type="email" id="email" placeholder="your@email.com">
+
+            <!-- Portfolio / GitHub links — collected BEFORE test starts so no tab switching needed -->
+            <label style="font-weight:bold;">GitHub Profile <span style="font-weight:400;color:#888;font-size:12px;">(optional)</span></label>
+            <div style="position:relative;margin-bottom:12px;">
+                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;">🐙</span>
+                <input type="url" id="githubUrl" placeholder="https://github.com/yourname"
+                    style="padding-left:34px;margin-bottom:0;">
             </div>
 
-            <div id="questionsContainer"></div>
+            <label style="font-weight:bold;">Portfolio / Website <span style="font-weight:400;color:#888;font-size:12px;">(optional)</span></label>
+            <div style="position:relative;margin-bottom:16px;">
+                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;">🌐</span>
+                <input type="url" id="portfolioUrl" placeholder="https://yourportfolio.com"
+                    style="padding-left:34px;margin-bottom:0;">
+            </div>
 
-            <!-- Resume Upload -->
-            <div style="margin:16px 0;padding:14px 16px;border:2px dashed #ccc;border-radius:8px;background:#fafafa;">
+            <!-- Resume upload also happens before test -->
+            <div style="margin-bottom:16px;padding:14px 16px;border:2px dashed #ccc;border-radius:8px;background:#fafafa;">
                 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                     <span style="font-size:22px;">&#128206;</span>
                     <div style="flex:1;">
@@ -75,6 +77,20 @@
                 <div id="resumeStatus" style="margin-top:8px;font-size:13px;display:none;"></div>
             </div>
 
+            <div id="infoError" class="error"></div>
+            <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:10px 14px;font-size:13px;color:#795548;margin-bottom:14px;">
+                ⏱️ The timer starts the moment you click <strong>Begin Test</strong>. Make sure you are ready.
+            </div>
+            <button id="beginTestBtn" onclick="beginTest()">▶ Begin Test</button>
+        </div>
+
+        <!-- Step 2: Take the test -->
+        <div id="testSection" style="display:none;">
+            <div id="timer">--:--</div>
+            <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:100%"></div></div>
+
+            <div id="questionsContainer"></div>
+
             <div class="retry-notice" id="retryNotice"></div>
             <button id="submitBtn" onclick="submitTest()">Submit Application</button>
         </div>
@@ -87,8 +103,9 @@
         let timeLeft = 0;
         let interval = null;
         let currentJobId = null;
+        let currentJobData = null;  // store job+questions until Begin Test
         let isSubmitting = false;
-        let pendingResumeFile = null;  // holds selected file until after submission
+        let pendingResumeFile = null;
 
         // ── Anti-cheat: count tab switches ──
         document.addEventListener("visibilitychange", () => {
@@ -138,7 +155,6 @@
             startBtn.textContent = 'Loading...';
 
             try {
-                // All data comes from backend — no Supabase key in frontend
                 const res = await fetchWithRetry(`${CONFIG.BACKEND_URL}/jobs/${encodeURIComponent(jobId)}`);
 
                 if (res.status === 404) {
@@ -160,34 +176,13 @@
                     return;
                 }
 
-                currentJobId = jobId;
-                totalTime = job.time_limit_minutes * 60;
-                timeLeft = totalTime;
+                currentJobId   = jobId;
+                currentJobData = data;
+                totalTime      = job.time_limit_minutes * 60;
 
+                // Move to candidate info step — timer NOT started yet
                 document.getElementById('jobInputSection').style.display = 'none';
-                document.getElementById('testSection').style.display = 'block';
-
-                // Render questions
-                const container = document.getElementById('questionsContainer');
-                container.innerHTML = '';
-                questions.forEach((q, i) => {
-                    container.innerHTML += `
-                        <div class="question-block">
-                            <p><strong>Q${i + 1}:</strong> ${escapeHtml(q.question_text)}</p>
-                            <textarea class="ans" data-q-id="${q.id}" data-q-text="${escapeAttr(q.question_text)}" rows="4" placeholder="Type your answer here..."></textarea>
-                        </div>`;
-                });
-
-                // Start countdown timer
-                updateTimer();
-                interval = setInterval(() => {
-                    timeLeft--;
-                    updateTimer();
-                    if (timeLeft <= 0) {
-                        clearInterval(interval);
-                        submitTest(true);
-                    }
-                }, 1000);
+                document.getElementById('candidateInfoSection').style.display = 'block';
 
             } catch (err) {
                 errorEl.textContent = 'Could not connect to the server. Please try again.';
@@ -195,6 +190,46 @@
                 startBtn.disabled = false;
                 startBtn.textContent = 'Start Assessment';
             }
+        }
+
+        function beginTest() {
+            const name  = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const errEl = document.getElementById('infoError');
+
+            errEl.textContent = '';
+            if (!name)  { errEl.textContent = 'Please enter your full name.'; return; }
+            if (!email) { errEl.textContent = 'Please enter your email address.'; return; }
+
+            const { questions } = currentJobData;
+
+            // Hide info section, show test
+            document.getElementById('candidateInfoSection').style.display = 'none';
+            document.getElementById('testSection').style.display = 'block';
+
+            // Render questions
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = '';
+            questions.forEach((q, i) => {
+                container.innerHTML += `
+                    <div class="question-block">
+                        <p><strong>Q${i + 1}:</strong> ${escapeHtml(q.question_text)}</p>
+                        <textarea class="ans" data-q-id="${q.id}" data-q-text="${escapeAttr(q.question_text)}" rows="4" placeholder="Type your answer here..."></textarea>
+                    </div>`;
+            });
+
+            // NOW start the timer — tab switches from here count
+            tabSwitchCount = 0;
+            timeLeft = totalTime;
+            updateTimer();
+            interval = setInterval(() => {
+                timeLeft--;
+                updateTimer();
+                if (timeLeft <= 0) {
+                    clearInterval(interval);
+                    submitTest(true);
+                }
+            }, 1000);
         }
 
         function updateTimer() {
