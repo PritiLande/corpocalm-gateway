@@ -73,6 +73,25 @@
         .save-notes-btn { margin-top: 8px; padding: 8px 18px; background: #1a237e; color: #fff; border: none; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.18s; }
         .save-notes-btn:hover { background: #283593; }
         .notes-saved { color: #16a34a; font-size: 12px; margin-left: 10px; font-weight: 600; display: none; }
+
+        /* Ranking styles */
+        .rank-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(26,35,126,0.07); margin-bottom:10px; padding:16px 20px; display:flex; align-items:center; gap:16px; transition:box-shadow 0.15s; }
+        .rank-card:hover { box-shadow:0 4px 20px rgba(26,35,126,0.13); }
+        .rank-num { font-size:22px; font-weight:800; min-width:48px; text-align:center; color:#94a3b8; }
+        .rank-num.top1 { color:#f59e0b; }
+        .rank-num.top2 { color:#94a3b8; }
+        .rank-num.top3 { color:#d97706; }
+        .rank-medal { font-size:26px; min-width:32px; text-align:center; }
+        .rank-score { font-size:28px; font-weight:800; min-width:64px; text-align:center; border-radius:10px; padding:8px 0; }
+        .rank-score.high { color:#16a34a; background:#f0fdf4; }
+        .rank-score.mid  { color:#d97706; background:#fffbeb; }
+        .rank-score.low  { color:#dc2626; background:#fef2f2; }
+        .rank-info { flex:1; }
+        .rank-info .name  { font-size:15px; font-weight:700; color:#1e293b; }
+        .rank-info .email { font-size:12px; color:#94a3b8; margin-top:2px; }
+        .rank-info .meta  { font-size:12px; color:#64748b; margin-top:4px; }
+        .rank-percentile  { font-size:11px; font-weight:700; color:#6366f1; background:#eef2ff; padding:3px 9px; border-radius:10px; white-space:nowrap; }
+        .rank-actions { display:flex; gap:6px; flex-wrap:wrap; }
     </style>
 </head>
 <body>
@@ -87,6 +106,20 @@
         </div>
     </div>
 
+    <!-- View Toggle Tabs -->
+    <div style="display:flex;gap:0;margin-bottom:18px;border-bottom:2px solid #e8eaf6;">
+        <button id="tabApplications" onclick="switchView('applications')"
+            style="padding:10px 22px;background:none;border:none;border-bottom:3px solid #1a237e;color:#1a237e;font-weight:700;font-size:14px;cursor:pointer;margin-bottom:-2px;">
+            📋 Applications
+        </button>
+        <button id="tabRanking" onclick="switchView('ranking')"
+            style="padding:10px 22px;background:none;border:none;border-bottom:3px solid transparent;color:#888;font-weight:600;font-size:14px;cursor:pointer;margin-bottom:-2px;">
+            🏆 Candidate Ranking
+        </button>
+    </div>
+
+    <!-- Applications view -->
+    <div id="applicationsView">
     <div class="controls">
         <input type="text" id="filterJobId" placeholder="🔍 Filter by Job ID (optional)">
         <button onclick="fetchApplications()">↻ Load / Refresh</button>
@@ -155,7 +188,31 @@
         <div class="empty-state"><div class="empty-icon">📂</div><div class="empty-title">No applications loaded</div><div class="empty-sub">Click "↻ Load / Refresh" to see all applications.</div></div>
     </div>
     <div id="paginationBar" class="pagination"></div>
-</div>
+    </div><!-- end applicationsView -->
+
+    <!-- Ranking view -->
+    <div id="rankingView" style="display:none;">
+        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;">
+            <div>
+                <label style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Filter by Job ID</label>
+                <input type="text" id="rankJobId" placeholder="Paste Job ID (or leave blank for all)"
+                    style="padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;width:300px;font-size:13px;">
+            </div>
+            <div>
+                <label style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">HR Status</label>
+                <select id="rankHRStatus" style="padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                    <option value="">All</option>
+                    <option value="Shortlisted">Shortlisted</option>
+                    <option value="Reviewing">Reviewing</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
+            </div>
+            <button onclick="loadRanking()" style="padding:9px 20px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">🏆 Load Ranking</button>
+        </div>
+        <div id="rankingContent">
+            <div class="empty-state"><div class="empty-icon">🏆</div><div class="empty-title">Click "Load Ranking" to see candidates ranked by score</div></div>
+        </div>
+    </div>
 
 <!-- Answer + Notes Modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
@@ -208,6 +265,94 @@
         currentFilters = {};
         currentPage = 1;
         fetchApplications();
+    }
+
+    // ── View toggle ──
+    function switchView(view) {
+        const isRanking = view === 'ranking';
+        document.getElementById('applicationsView').style.display = isRanking ? 'none' : 'block';
+        document.getElementById('rankingView').style.display      = isRanking ? 'block' : 'none';
+
+        const tabA = document.getElementById('tabApplications');
+        const tabR = document.getElementById('tabRanking');
+        tabA.style.borderBottomColor = isRanking ? 'transparent' : '#1a237e';
+        tabA.style.color             = isRanking ? '#888' : '#1a237e';
+        tabR.style.borderBottomColor = isRanking ? '#1a237e' : 'transparent';
+        tabR.style.color             = isRanking ? '#1a237e' : '#888';
+
+        if (isRanking) loadRanking();
+    }
+
+    // ── Candidate Ranking ──
+    async function loadRanking() {
+        const el      = document.getElementById('rankingContent');
+        const jobId   = document.getElementById('rankJobId').value.trim();
+        const hrStatus= document.getElementById('rankHRStatus').value;
+
+        el.innerHTML = '<p class="loading">Loading rankings...</p>';
+
+        try {
+            let url = `${CONFIG.BACKEND_URL}/applications/ranking?limit=100`;
+            if (jobId)    url += `&job_id=${encodeURIComponent(jobId)}`;
+            if (hrStatus) url += `&hr_status=${encodeURIComponent(hrStatus)}`;
+
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            const data = await res.json();
+            renderRanking(data.ranking || [], data.total || 0);
+        } catch (err) {
+            el.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Failed to load ranking</div><div class="empty-sub">${err.message}</div></div>`;
+        }
+    }
+
+    function renderRanking(ranking, total) {
+        const el = document.getElementById('rankingContent');
+        if (!ranking.length) {
+            el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No candidates found</div><div class="empty-sub">Try clearing the filters.</div></div>`;
+            return;
+        }
+
+        const header = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <div style="font-size:13px;color:#64748b;">Showing <strong>${total}</strong> candidate${total!==1?'s':''} ranked by AI score</div>
+                <div style="font-size:12px;color:#94a3b8;">Best attempt per candidate · Highest score first</div>
+            </div>`;
+
+        const cards = ranking.map(c => {
+            const rankCls   = c.rank === 1 ? 'top1' : c.rank === 2 ? 'top2' : c.rank === 3 ? 'top3' : '';
+            const scoreCls  = c.ai_score >= 70 ? 'high' : c.ai_score >= 40 ? 'mid' : 'low';
+            const hrBadge   = c.hr_status
+                ? `<span class="badge badge-${c.hr_status.toLowerCase()}" style="margin-left:6px;">${c.hr_status}</span>`
+                : (c.status === 'Passed'
+                    ? `<span class="badge badge-passed" style="margin-left:6px;">Passed</span>`
+                    : `<span class="badge badge-failed" style="margin-left:6px;">Failed</span>`);
+            const tabWarn   = c.tab_switch_count > 2 ? ` <span style="color:#dc2626;font-size:11px;">⚠️ ${c.tab_switch_count} tab switches</span>` : '';
+            const submitted = c.submitted_at ? new Date(c.submitted_at).toLocaleDateString() : '';
+
+            return `
+            <div class="rank-card">
+                <div class="rank-num ${rankCls}">${c.medal || '#'+c.rank}</div>
+                <div class="rank-score ${scoreCls}">${c.ai_score ?? 'N/A'}<span style="font-size:11px;font-weight:400;"> /100</span></div>
+                <div class="rank-info">
+                    <div class="name">${esc(c.candidate_name)} ${hrBadge}</div>
+                    <div class="email">${esc(c.candidate_email)}</div>
+                    <div class="meta">📌 ${esc(c.role_title)} ${tabWarn} ${submitted ? '· ' + submitted : ''}</div>
+                </div>
+                <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                    <span class="rank-percentile">Top ${100 - c.percentile}%</span>
+                    <div class="rank-actions">
+                        <button class="btn-shortlist" onclick="updateHRStatus('${c.id}','Shortlisted')">✓ Shortlist</button>
+                        <a href="candidate-profile.html?id=${c.id}" class="profile-link">Profile</a>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+        el.innerHTML = header + cards;
+    }
+
+    function esc(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     async function fetchApplications(page) {

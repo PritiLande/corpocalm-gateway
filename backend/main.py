@@ -1334,6 +1334,78 @@ def list_applications(
     }
 
 
+@app.get("/applications/ranking", summary="Ranked leaderboard of candidates by AI score")
+def get_ranking(
+    job_id:    Optional[str] = Query(None, description="Filter by job ID to rank within a role"),
+    hr_status: Optional[str] = Query(None, description="Filter by HR status"),
+    limit:     int           = Query(50,   ge=1, le=200, description="Max candidates to return"),
+    hr=Depends(get_current_hr)
+):
+    """
+    Returns candidates ranked by AI score (highest first).
+    Adds rank number, medal (for top 3), and percentile.
+    Best attempt per candidate per job is used (no duplicates).
+    """
+    query = supabase.table("applications")\
+        .select("id, candidate_name, candidate_email, ai_score, status, hr_status, tab_switch_count, job_id, attempt_number, submit_time, created_at")
+
+    if job_id:
+        query = query.eq("job_id", job_id)
+    if hr_status:
+        query = query.eq("hr_status", hr_status)
+
+    res = query.order("ai_score", desc=True).execute()
+    apps = res.data or []
+
+    # Deduplicate — keep best attempt per candidate per job
+    seen = {}
+    for app in apps:
+        key = (app["job_id"], app["candidate_email"])
+        if key not in seen:
+            seen[key] = app
+        else:
+            existing_score = seen[key].get("ai_score") or 0
+            current_score  = app.get("ai_score") or 0
+            if current_score > existing_score:
+                seen[key] = app
+
+    unique = sorted(seen.values(), key=lambda x: x.get("ai_score") or 0, reverse=True)
+    unique = unique[:limit]
+
+    total = len(unique)
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+    # Fetch job titles for display
+    job_ids = list({a["job_id"] for a in unique if a.get("job_id")})
+    job_titles = {}
+    if job_ids:
+        jobs_res = supabase.table("jobs").select("id, role_title").in_("id", job_ids).execute()
+        if jobs_res.data:
+            job_titles = {j["id"]: j["role_title"] for j in jobs_res.data}
+
+    ranked = []
+    for i, app in enumerate(unique, 1):
+        score = app.get("ai_score")
+        percentile = round(((total - i) / total) * 100) if total > 1 else 100
+        ranked.append({
+            "rank":           i,
+            "medal":          medals.get(i, ""),
+            "id":             app["id"],
+            "candidate_name": app["candidate_name"],
+            "candidate_email":app["candidate_email"],
+            "ai_score":       score,
+            "status":         app.get("status", ""),
+            "hr_status":      app.get("hr_status", ""),
+            "tab_switch_count": app.get("tab_switch_count", 0),
+            "job_id":         app.get("job_id", ""),
+            "role_title":     job_titles.get(app.get("job_id", ""), "Unknown Role"),
+            "percentile":     percentile,
+            "submitted_at":   app.get("submit_time") or app.get("created_at", "")
+        })
+
+    return {"total": total, "ranking": ranked}
+
+
 @app.get("/applications/{application_id}/answers", summary="Get answers for an application")
 def get_answers(application_id: str):
     res = supabase.table("answers").select("*").eq("application_id", application_id).execute()
