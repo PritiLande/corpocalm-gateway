@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CorpoCalm Gateway - Admin Panel</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; max-width: 680px; margin: 40px auto; padding: 20px; background: #f0f4f8; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .topbar span { font-size: 14px; color: #555; }
+        .logout-btn { background: none; border: 1px solid #ccc; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #666; }
+        .logout-btn:hover { background: #ffebee; border-color: #ef9a9a; color: #c62828; }
+        .card { background: white; padding: 34px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h1 { margin-top: 0; color: #1a237e; font-size: 22px; }
+        .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #888; margin: 24px 0 12px; border-top: 1px solid #eee; padding-top: 20px; }
+        label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 5px; color: #333; }
+        input, textarea, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 14px; font-family: inherit; }
+        input:focus, textarea:focus, select:focus { border-color: #3f51b5; outline: none; box-shadow: 0 0 0 3px rgba(63,81,181,0.1); }
+        textarea { resize: vertical; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .hint { font-size: 12px; color: #888; margin-top: -10px; margin-bottom: 14px; }
+        button.primary { width: 100%; padding: 14px; background: #1a237e; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: background 0.2s; }
+        button.primary:hover { background: #283593; }
+        button.primary:disabled { background: #aaa; cursor: not-allowed; }
+        .result-box { margin-top: 20px; padding: 18px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; display: none; font-size: 14px; line-height: 1.8; }
+        .error-box { margin-top: 20px; padding: 14px; background: #ffebee; border: 1px solid #ef9a9a; border-radius: 8px; display: none; font-size: 14px; }
+        .link-box { background: #f5f5f5; padding: 10px 12px; border-radius: 6px; font-family: monospace; font-size: 13px; word-break: break-all; margin: 8px 0; border: 1px solid #e0e0e0; }
+        .copy-btn { background: #1a237e; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-top: 6px; }
+        .copy-btn:hover { background: #283593; }
+        /* AI Generate button */
+        .ai-btn { background: #6a1b9a; color: white; border: none; padding: 9px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+        .ai-btn:hover { background: #7b1fa2; }
+        .ai-btn:disabled { background: #aaa; cursor: not-allowed; }
+        .ai-generating { background: #f3e5f5; border: 1px solid #ce93d8; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #6a1b9a; margin-bottom: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+<!-- Top bar with HR name and logout -->
+<div class="topbar">
+    <span>Welcome, <strong id="hrName">HR</strong> &nbsp;|&nbsp;
+        <a href="dashboard.html" style="color:#1a237e;font-size:13px;text-decoration:none;">Dashboard</a> &nbsp;|&nbsp;
+        <a href="analytics.html" style="color:#1a237e;font-size:13px;text-decoration:none;">Analytics</a>
+    </span>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+</div>
+
+<div class="card">
+    <h1>Publish a Job Assessment — CorpoCalm Gateway</h1>
+
+    <div class="section-title">Job Information</div>
+    <label>Job Title *</label>
+    <input type="text" id="role" placeholder="e.g. Senior Backend Engineer" oninput="saveField(this)">
+
+    <div class="row">
+        <div>
+            <label>Location</label>
+            <input type="text" id="location" placeholder="e.g. Remote / Mumbai" oninput="saveField(this)">
+        </div>
+        <div>
+            <label>Job Type</label>
+            <select id="jobType" onchange="saveField(this)">
+                <option value="">Select...</option>
+                <option value="Full-Time">Full-Time</option>
+                <option value="Part-Time">Part-Time</option>
+                <option value="Contract">Contract</option>
+                <option value="Internship">Internship</option>
+                <option value="Freelance">Freelance</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="row">
+        <div>
+            <label>Salary Range</label>
+            <input type="text" id="salary" placeholder="e.g. 8-12 LPA" oninput="saveField(this)">
+        </div>
+        <div>
+            <label>Experience Required</label>
+            <input type="text" id="experience" placeholder="e.g. 2-4 years" oninput="saveField(this)">
+        </div>
+    </div>
+
+    <label>Job Description</label>
+    <textarea id="description" rows="4" placeholder="Describe the role and responsibilities..." oninput="saveField(this)"></textarea>
+
+    <label>Skills Required</label>
+    <input type="text" id="skills" placeholder="e.g. Python, FastAPI, PostgreSQL, Docker" oninput="saveField(this)">
+    <p class="hint">Comma-separated list of skills.</p>
+
+    <div class="section-title">Assessment Configuration</div>
+
+    <div class="row">
+        <div>
+            <label>Time Limit (minutes) *</label>
+            <input type="number" id="time" placeholder="e.g. 30" min="1" oninput="saveField(this)">
+        </div>
+        <div>
+            <label>Passing Score (%)</label>
+            <input type="number" id="threshold" placeholder="Default: 70" min="0" max="100" oninput="saveField(this)">
+        </div>
+    </div>
+
+    <label>Application Expiry Date</label>
+    <input type="date" id="expiryDate" oninput="saveField(this)">
+    <p class="hint">After this date, candidates cannot apply. Leave blank for no expiry.</p>
+
+    <label>Screening Questions *</label>
+
+    <!-- AI Generate Button -->
+    <button class="ai-btn" id="aiGenBtn" onclick="generateQuestionsAI()">
+        &#10024; Generate Questions with AI
+    </button>
+    <div class="ai-generating" id="aiGenerating">AI is generating questions for you...</div>
+
+    <textarea id="questions" rows="5" placeholder="One question per line. e.g.&#10;What programming languages do you know?&#10;What is a database and why do we use it?" oninput="saveField(this)"></textarea>
+    <p class="hint">Each line = one question. Or click the AI button above to auto-generate.</p>
+
+    <button class="primary" id="publishBtn" onclick="publishJob()">Publish Job</button>
+
+    <div class="result-box" id="resultBox"></div>
+    <div class="error-box" id="errorBox"></div>
+</div>
+
+<script src="config.js"></script>
+<script>
+    const PORTAL_BASE  = window.location.href.replace('admin.html', '');
+    const SAVE_FIELDS  = ['role','location','jobType','salary','experience','description','skills','questions','time','threshold','expiryDate'];
+    const token        = localStorage.getItem('hr_token');
+
+    // ── Auth check — redirect to login if not logged in ──
+    if (!token) window.location.href = 'login.html';
+
+    window.addEventListener('DOMContentLoaded', () => {
+        // Show HR name
+        document.getElementById('hrName').textContent = localStorage.getItem('hr_name') || 'HR';
+
+        // Restore saved form fields
+        SAVE_FIELDS.forEach(id => {
+            const saved = localStorage.getItem('cc_' + id);
+            if (saved) document.getElementById(id).value = saved;
+        });
+    });
+
+    function saveField(el) {
+        localStorage.setItem('cc_' + el.id, el.value);
+    }
+
+    function logout() {
+        localStorage.removeItem('hr_token');
+        localStorage.removeItem('hr_name');
+        window.location.href = 'login.html';
+    }
+
+    // ── AI Question Generator ──
+    async function generateQuestionsAI() {
+        const role   = document.getElementById('role').value.trim();
+        const skills = document.getElementById('skills').value.trim();
+
+        if (!role) {
+            showError('Please enter a Job Title first so AI knows what questions to generate.');
+            return;
+        }
+
+        const btn = document.getElementById('aiGenBtn');
+        const notice = document.getElementById('aiGenerating');
+        btn.disabled = true;
+        notice.style.display = 'block';
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/generate-questions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ role_title: role, skills_required: skills })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'AI generation failed');
+            }
+
+            const data = await res.json();
+            const questionsText = data.questions.join('\n');
+            document.getElementById('questions').value = questionsText;
+            localStorage.setItem('cc_questions', questionsText);
+
+        } catch (err) {
+            showError('AI generation failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            notice.style.display = 'none';
+        }
+    }
+
+    async function publishJob() {
+        const resultBox  = document.getElementById('resultBox');
+        const errorBox   = document.getElementById('errorBox');
+        const publishBtn = document.getElementById('publishBtn');
+
+        resultBox.style.display = 'none';
+        errorBox.style.display  = 'none';
+
+        const role        = document.getElementById('role').value.trim();
+        const time        = parseInt(document.getElementById('time').value);
+        const threshold   = parseInt(document.getElementById('threshold').value) || 70;
+        const rawQ        = document.getElementById('questions').value.trim();
+        const location    = document.getElementById('location').value.trim();
+        const jobType     = document.getElementById('jobType').value;
+        const salary      = document.getElementById('salary').value.trim();
+        const experience  = document.getElementById('experience').value.trim();
+        const description = document.getElementById('description').value.trim();
+        const skills      = document.getElementById('skills').value.trim();
+        const expiryDate  = document.getElementById('expiryDate').value || null;
+
+        if (!role)             { showError('Please enter a Job Title.'); return; }
+        if (!time || time < 1) { showError('Please enter a valid time limit (minimum 1 minute).'); return; }
+        if (!rawQ)             { showError('Please enter at least one screening question.'); return; }
+
+        const questions = rawQ.split('\n').map(q => q.trim()).filter(q => q.length > 0);
+        if (questions.length === 0) { showError('No valid questions found.'); return; }
+
+        publishBtn.disabled = true;
+        publishBtn.textContent = 'Publishing...';
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/jobs`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    role_title: role,
+                    time_limit_minutes: time,
+                    passing_threshold: threshold,
+                    questions: questions,
+                    location: location || null,
+                    job_type: jobType || null,
+                    salary_range: salary || null,
+                    experience_required: experience || null,
+                    description: description || null,
+                    skills_required: skills || null,
+                    expiry_date: expiryDate
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || `Server error: ${res.status}`);
+            }
+
+            const json = await res.json();
+            const portalLink = `${PORTAL_BASE}job-portal.html?job=${json.job_id}`;
+
+            resultBox.innerHTML = `
+                <strong>Job Published Successfully!</strong><br><br>
+                <strong>Job ID:</strong>
+                <div class="link-box">${json.job_id}</div>
+                <strong>Share this link with candidates:</strong>
+                <div class="link-box">${portalLink}</div>
+                <button class="copy-btn" onclick="copyLink('${portalLink}')">Copy Link</button>
+                <br><br>
+                <span style="color:#555;">Candidates will see the full job details and rules before starting the test.</span>`;
+            resultBox.style.display = 'block';
+
+            SAVE_FIELDS.forEach(id => {
+                localStorage.removeItem('cc_' + id);
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('jobType').value = '';
+
+        } catch (err) {
+            showError(err.message);
+        } finally {
+            publishBtn.disabled = false;
+            publishBtn.textContent = 'Publish Job';
+        }
+    }
+
+    function copyLink(link) {
+        navigator.clipboard.writeText(link).then(() => alert('Link copied!'))
+        .catch(() => {
+            const el = document.createElement('textarea');
+            el.value = link;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            alert('Link copied!');
+        });
+    }
+
+    function showError(msg) {
+        const errorBox = document.getElementById('errorBox');
+        errorBox.textContent = 'Error: ' + msg;
+        errorBox.style.display = 'block';
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CorpoCalm Gateway - Project Documentation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; color: #222; background: #fff; padding: 40px; max-width: 900px; margin: auto; }
+  h1 { font-size: 28px; color: #1a237e; border-bottom: 3px solid #1a237e; padding-bottom: 10px; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 30px; }
+  h2 { font-size: 18px; color: #1a237e; margin: 30px 0 10px; border-left: 4px solid #1a237e; padding-left: 10px; }
+  h3 { font-size: 15px; color: #333; margin: 18px 0 8px; }
+  p { line-height: 1.75; color: #444; margin-bottom: 10px; font-size: 14px; }
+  ul, ol { padding-left: 22px; margin-bottom: 12px; }
+  li { line-height: 1.8; font-size: 14px; color: #444; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+  th { background: #1a237e; color: white; padding: 9px 12px; text-align: left; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8f9ff; }
+  code { background: #f0f0f0; padding: 2px 7px; border-radius: 4px; font-family: monospace; font-size: 13px; color: #c62828; }
+  .code-block { background: #1e1e1e; color: #d4d4d4; padding: 14px 18px; border-radius: 6px; font-family: monospace; font-size: 13px; margin: 10px 0 16px; white-space: pre; overflow-x: auto; line-height: 1.6; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+  .badge-green { background: #e8f5e9; color: #2e7d32; }
+  .badge-blue { background: #e3f2fd; color: #1565c0; }
+  .badge-orange { background: #fff3e0; color: #e65100; }
+  .section { margin-bottom: 10px; }
+  .divider { border: none; border-top: 1px solid #e0e0e0; margin: 30px 0; }
+  .flow-box { background: #f5f5f5; border-left: 4px solid #3f51b5; padding: 14px 18px; border-radius: 4px; margin: 12px 0; font-size: 13px; line-height: 2; }
+  .cover { text-align: center; padding: 60px 20px 50px; border-bottom: 2px solid #e0e0e0; margin-bottom: 40px; }
+  .cover h1 { border: none; font-size: 36px; }
+  .cover .tagline { font-size: 16px; color: #666; margin-top: 10px; }
+  .cover .meta { margin-top: 30px; font-size: 13px; color: #888; }
+  @media print {
+    body { padding: 20px; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <h1 style="border:none;color:#1a237e;">CorpoCalm Gateway</h1>
+  <div class="tagline">Online Job Screening & Assessment Platform</div>
+  <div class="meta">
+    Project Documentation &nbsp;|&nbsp; Version 1.0 &nbsp;|&nbsp; July 2026
+  </div>
+</div>
+
+<div class="no-print" style="background:#e8f5e9;border:1px solid #a5d6a7;padding:12px 18px;border-radius:6px;margin-bottom:30px;font-size:13px;">
+  <strong>To save as PDF:</strong> Press <code>Ctrl + P</code> in your browser &rarr; Change destination to <strong>"Save as PDF"</strong> &rarr; Click Save.
+</div>
+
+<!-- 1. OVERVIEW -->
+<h2>1. Project Overview</h2>
+<p>CorpoCalm Gateway is a web-based job screening and technical assessment platform. It allows HR teams to publish job postings with custom screening questions, share a portal link with candidates, and automatically score submitted assessments. HR can view all results, scores, and answers from a dedicated dashboard.</p>
+
+<table>
+  <tr><th>Property</th><th>Details</th></tr>
+  <tr><td>Project Name</td><td>CorpoCalm Gateway</td></tr>
+  <tr><td>Type</td><td>Job Screening & Assessment Platform</td></tr>
+  <tr><td>Backend</td><td>Python 3.14 + FastAPI</td></tr>
+  <tr><td>Frontend</td><td>Plain HTML + JavaScript (no framework)</td></tr>
+  <tr><td>Database</td><td>Supabase (PostgreSQL)</td></tr>
+  <tr><td>Backend Port</td><td>http://127.0.0.1:8000</td></tr>
+  <tr><td>Frontend Port</td><td>http://localhost:3000</td></tr>
+</table>
+
+<hr class="divider">
+
+<!-- 2. FILE STRUCTURE -->
+<h2>2. Project File Structure</h2>
+<div class="code-block">corpocalm-gateway/
+├── backend/
+│   ├── .env                  ← Supabase credentials + secret key
+│   ├── main.py               ← FastAPI server (all API endpoints)
+│   ├── schemas.py            ← Pydantic data models & validation
+│   └── database_schema.sql   ← SQL to run in Supabase
+│
+└── frontend/
+    ├── config.js             ← Backend URL config (one place)
+    ├── admin.html            ← HR creates and publishes jobs
+    ├── job-portal.html       ← Candidate views job + rules popup
+    ├── index.html            ← Candidate takes the test
+    └── dashboard.html        ← HR views all results & answers</div>
+
+<hr class="divider">
+
+<!-- 3. USER ROLES -->
+<h2>3. User Roles</h2>
+<table>
+  <tr><th>Role</th><th>Page</th><th>What They Do</th></tr>
+  <tr><td><strong>HR / Admin</strong></td><td>admin.html</td><td>Create job postings with questions, get shareable link</td></tr>
+  <tr><td><strong>Candidate</strong></td><td>job-portal.html → index.html</td><td>View job, accept rules, take timed test, submit</td></tr>
+  <tr><td><strong>HR / Recruiter</strong></td><td>dashboard.html</td><td>View all submissions, scores, answers</td></tr>
+</table>
+
+<hr class="divider">
+
+<!-- 4. COMPLETE FLOW -->
+<h2>4. Complete Application Flow</h2>
+<div class="flow-box">
+<strong>Step 1:</strong> HR opens admin.html
+  → Fills job title, description, skills, location, salary, experience
+  → Sets time limit and passing score
+  → Enters screening questions (one per line)
+  → Enters Admin API Key and clicks "Publish Job"
+  → Gets a shareable link: <em>job-portal.html?job=JOB_ID</em>
+
+<strong>Step 2:</strong> HR shares the link via email / LinkedIn / job boards
+
+<strong>Step 3:</strong> Candidate opens the link
+  → Sees full job card (title, location, salary, skills, description)
+  → Clicks "Apply Now"
+  → Rules popup appears (timer, no tab switch, 2 attempts, no refresh)
+  → Clicks "No Thanks" → sees Thank You message, closes tab
+  → Clicks "I Accept, Start Test" → redirected to index.html
+
+<strong>Step 4:</strong> Candidate takes the test (index.html)
+  → Test auto-loads (no Job ID typing needed)
+  → Fills name and email
+  → Answers questions within the time limit
+  → Timer auto-submits if time runs out
+  → Clicks Submit → sees "Test Submitted Successfully"
+  → No score shown to candidate
+
+<strong>Step 5:</strong> HR checks dashboard.html
+  → Clicks Load/Refresh
+  → Sees candidate name, email, AI score, pass/fail, tab switches
+  → Clicks "View Answers" to read full responses
+</div>
+
+<hr class="divider">
+
+<!-- 5. API ENDPOINTS -->
+<h2>5. Backend API Endpoints</h2>
+<table>
+  <tr><th>Method</th><th>Endpoint</th><th>Who Uses It</th><th>Description</th></tr>
+  <tr><td><span class="badge badge-blue">GET</span></td><td>/health</td><td>Anyone</td><td>Check if backend is running</td></tr>
+  <tr><td><span class="badge badge-green">POST</span></td><td>/jobs</td><td>HR (admin)</td><td>Create a job + questions. Requires X-API-KEY header.</td></tr>
+  <tr><td><span class="badge badge-blue">GET</span></td><td>/jobs/{job_id}</td><td>Candidate portal</td><td>Get job details + questions for a job ID</td></tr>
+  <tr><td><span class="badge badge-green">POST</span></td><td>/applications</td><td>Candidate</td><td>Submit answers. Scores automatically. Saves to DB.</td></tr>
+  <tr><td><span class="badge badge-blue">GET</span></td><td>/applications</td><td>HR dashboard</td><td>List all applications (optional ?job_id= filter)</td></tr>
+  <tr><td><span class="badge badge-blue">GET</span></td><td>/applications/{id}/answers</td><td>HR dashboard</td><td>Get all answers for a specific application</td></tr>
+</table>
+
+<hr class="divider">
+
+<!-- 6. DATABASE -->
+<h2>6. Database Schema (Supabase)</h2>
+
+<h3>Table: jobs</h3>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+  <tr><td>id</td><td>UUID</td><td>Primary key, auto-generated</td></tr>
+  <tr><td>role_title</td><td>VARCHAR</td><td>Job title</td></tr>
+  <tr><td>time_limit_minutes</td><td>INT</td><td>Test time limit (default 15)</td></tr>
+  <tr><td>passing_threshold</td><td>INT</td><td>Passing score % (default 70)</td></tr>
+  <tr><td>description</td><td>TEXT</td><td>Full job description</td></tr>
+  <tr><td>skills_required</td><td>TEXT</td><td>Comma-separated skills</td></tr>
+  <tr><td>location</td><td>VARCHAR</td><td>Job location</td></tr>
+  <tr><td>job_type</td><td>VARCHAR</td><td>Full-Time / Part-Time / etc.</td></tr>
+  <tr><td>salary_range</td><td>VARCHAR</td><td>Salary e.g. 18-28 LPA</td></tr>
+  <tr><td>experience_required</td><td>VARCHAR</td><td>Experience e.g. 4-7 years</td></tr>
+  <tr><td>created_at</td><td>TIMESTAMP</td><td>Auto timestamp</td></tr>
+</table>
+
+<h3>Table: screening_questions</h3>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+  <tr><td>id</td><td>UUID</td><td>Primary key</td></tr>
+  <tr><td>job_id</td><td>UUID</td><td>Foreign key → jobs.id</td></tr>
+  <tr><td>question_text</td><td>TEXT</td><td>The question</td></tr>
+  <tr><td>created_at</td><td>TIMESTAMP</td><td>Auto timestamp</td></tr>
+</table>
+
+<h3>Table: applications</h3>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+  <tr><td>id</td><td>UUID</td><td>Primary key</td></tr>
+  <tr><td>job_id</td><td>UUID</td><td>Foreign key → jobs.id</td></tr>
+  <tr><td>candidate_name</td><td>VARCHAR</td><td>Full name</td></tr>
+  <tr><td>candidate_email</td><td>VARCHAR</td><td>Email address</td></tr>
+  <tr><td>tab_switch_count</td><td>INT</td><td>Anti-cheat tab switches</td></tr>
+  <tr><td>ai_score</td><td>INT</td><td>Score 0-100 (auto calculated)</td></tr>
+  <tr><td>status</td><td>VARCHAR</td><td>Passed / Failed / Submitted</td></tr>
+  <tr><td>attempt_number</td><td>INT</td><td>Max 2 attempts per candidate</td></tr>
+  <tr><td>created_at</td><td>TIMESTAMP</td><td>Auto timestamp</td></tr>
+</table>
+
+<h3>Table: answers</h3>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+  <tr><td>id</td><td>UUID</td><td>Primary key</td></tr>
+  <tr><td>application_id</td><td>UUID</td><td>Foreign key → applications.id</td></tr>
+  <tr><td>question_id</td><td>UUID</td><td>Foreign key → screening_questions.id</td></tr>
+  <tr><td>question_text</td><td>TEXT</td><td>Question (stored for reference)</td></tr>
+  <tr><td>candidate_answer</td><td>TEXT</td><td>Candidate's answer</td></tr>
+  <tr><td>created_at</td><td>TIMESTAMP</td><td>Auto timestamp</td></tr>
+</table>
+
+<hr class="divider">
+
+<!-- 7. SCORING -->
+<h2>7. AI Scoring System</h2>
+<p>Scoring is calculated automatically on the backend when a candidate submits. Each answer is scored out of 100 and the final score is the average across all answers.</p>
+
+<table>
+  <tr><th>Factor</th><th>Max Points</th><th>How It Works</th></tr>
+  <tr><td>Answer Length</td><td>60 pts</td><td>80+ words=60, 50+=50, 30+=38, 15+=25, 5+=10, blank=0</td></tr>
+  <tr><td>Technical Keywords</td><td>40 pts</td><td>Each keyword hit = 8 pts. Max 5 keywords = 40 pts</td></tr>
+</table>
+
+<p>Keywords checked include: api, database, index, query, cache, authentication, jwt, docker, microservice, sql, git, rest, algorithm, async, and 50+ more technical terms.</p>
+<p>Final score determines Pass/Fail based on the <strong>passing_threshold</strong> set per job (default 70%).</p>
+
+<hr class="divider">
+
+<!-- 8. SECURITY -->
+<h2>8. Security Features</h2>
+<table>
+  <tr><th>Feature</th><th>How It Works</th></tr>
+  <tr><td>Admin API Key</td><td>Required to publish jobs. Sent as X-API-KEY header. Set in .env file.</td></tr>
+  <tr><td>Supabase Keys Hidden</td><td>Keys only in backend .env. Frontend never touches Supabase directly.</td></tr>
+  <tr><td>Tab Switch Tracking</td><td>Every tab switch is counted and shown to HR in dashboard.</td></tr>
+  <tr><td>Max 2 Attempts</td><td>Enforced at database level with a UNIQUE constraint.</td></tr>
+  <tr><td>XSS Prevention</td><td>All user-provided text is HTML-escaped before rendering.</td></tr>
+  <tr><td>Input Validation</td><td>Pydantic models validate all incoming data on backend.</td></tr>
+</table>
+
+<hr class="divider">
+
+<!-- 9. HOW TO RUN -->
+<h2>9. How to Run Locally</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>Python 3.14 installed</li>
+  <li>Packages installed: fastapi, uvicorn, supabase, python-dotenv, httpx</li>
+</ul>
+
+<h3>Terminal 1 — Start Backend</h3>
+<div class="code-block">cd "c:\Users\dell\OneDrive\Documents\corpocalm-gateway\backend"
+python -m uvicorn main:app --reload</div>
+<p>Backend runs on: <code>http://127.0.0.1:8000</code></p>
+
+<h3>Terminal 2 — Start Frontend</h3>
+<div class="code-block">cd "c:\Users\dell\OneDrive\Documents\corpocalm-gateway\frontend"
+python -m http.server 3000</div>
+<p>Frontend runs on: <code>http://localhost:3000</code></p>
+
+<h3>Pages</h3>
+<table>
+  <tr><th>Page</th><th>URL</th></tr>
+  <tr><td>Admin Panel</td><td>http://localhost:3000/admin.html</td></tr>
+  <tr><td>Job Portal</td><td>http://localhost:3000/job-portal.html?job=JOB_ID</td></tr>
+  <tr><td>Candidate Test</td><td>http://localhost:3000/index.html</td></tr>
+  <tr><td>HR Dashboard</td><td>http://localhost:3000/dashboard.html</td></tr>
+  <tr><td>API Health Check</td><td>http://127.0.0.1:8000/health</td></tr>
+  <tr><td>API Docs</td><td>http://127.0.0.1:8000/docs</td></tr>
+</table>
+
+<hr class="divider">
+
+<!-- 10. ENV FILE -->
+<h2>10. Environment Variables (.env)</h2>
+<table>
+  <tr><th>Variable</th><th>Description</th></tr>
+  <tr><td>SUPABASE_URL</td><td>Your Supabase project URL</td></tr>
+  <tr><td>SUPABASE_KEY</td><td>Supabase anon/public key</td></tr>
+  <tr><td>SECRET_GATEWAY_KEY</td><td>Admin API key for publishing jobs (default: my_secret_123)</td></tr>
+  <tr><td>SMTP_HOST</td><td>Email server (default: smtp.gmail.com)</td></tr>
+  <tr><td>SMTP_PORT</td><td>Email port (default: 587)</td></tr>
+  <tr><td>SMTP_USER</td><td>Gmail address for sending notifications</td></tr>
+  <tr><td>SMTP_PASSWORD</td><td>Gmail App Password</td></tr>
+  <tr><td>HR_EMAIL</td><td>Email address to receive notifications</td></tr>
+</table>
+
+<hr class="divider">
+
+<!-- 11. FUTURE IDEAS -->
+<h2>11. Future Improvements</h2>
+<ul>
+  <li>Real AI scoring using OpenAI GPT API for semantic answer evaluation</li>
+  <li>HR login system with proper authentication</li>
+  <li>Email notifications to candidates after HR reviews</li>
+  <li>Deploy backend to Render.com and frontend to Netlify (free)</li>
+  <li>Export dashboard results to Excel/CSV</li>
+  <li>Multiple HR users with role-based access</li>
+  <li>Question bank — reuse questions across jobs</li>
+</ul>
+
+<hr class="divider">
+
+<p style="text-align:center;color:#aaa;font-size:12px;margin-top:20px;">
+  CorpoCalm Gateway &nbsp;|&nbsp; Built with FastAPI + Supabase &nbsp;|&nbsp; July 2026
+</p>
+
+</body>
+</html>

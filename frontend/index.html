@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CorpoCalm Gateway - Assessment</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: sans-serif; max-width: 640px; margin: 50px auto; padding: 20px; background: #f4f7f6; }
+        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; }
+        input, textarea { width: 100%; margin-bottom: 12px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        textarea { resize: vertical; }
+        button { padding: 10px 22px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 15px; }
+        button:disabled { background: #aaa; cursor: not-allowed; }
+        #timer { font-size: 26px; color: red; font-weight: bold; margin-bottom: 15px; }
+        #timer.warning { animation: blink 1s step-start infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .question-block { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .question-block:last-child { border-bottom: none; }
+        .error { color: red; font-size: 13px; margin-bottom: 10px; }
+        .progress-bar-wrap { background: #eee; border-radius: 4px; height: 6px; margin-bottom: 20px; }
+        .progress-bar { height: 6px; background: #007bff; border-radius: 4px; transition: width 1s linear; }
+        .retry-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 4px; font-size: 13px; margin-bottom: 10px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>CorpoCalm Gateway — Job Assessment</h1>
+
+        <!-- Step 1: Enter Job ID -->
+        <div id="jobInputSection">
+            <label style="font-weight:bold;">Job ID</label>
+            <input type="text" id="jobId" placeholder="Paste the Job ID you received">
+            <div id="jobError" class="error"></div>
+            <button id="startBtn" onclick="startAssessment()">Start Assessment</button>
+        </div>
+
+        <!-- Step 2: Take the test -->
+        <div id="testSection" style="display:none;">
+            <div id="timer">--:--</div>
+            <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:100%"></div></div>
+
+            <input type="text" id="name" placeholder="Full Name *">
+            <input type="email" id="email" placeholder="Email Address *">
+
+            <div id="questionsContainer"></div>
+
+            <!-- Resume Upload -->
+            <div style="margin:16px 0;padding:14px 16px;border:2px dashed #ccc;border-radius:8px;background:#fafafa;">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <span style="font-size:22px;">&#128206;</span>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;font-size:14px;color:#333;">Attach Resume <span style="background:#e8f5e9;color:#2e7d32;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;margin-left:6px;">Optional</span></div>
+                        <div style="font-size:12px;color:#888;margin-top:2px;">PDF or DOCX, max 5MB</div>
+                    </div>
+                    <label style="padding:8px 16px;background:#1a237e;color:white;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">
+                        + Attach
+                        <input type="file" id="resumeFile" accept=".pdf,.docx,.doc" style="display:none;" onchange="handleResumeSelect(this)">
+                    </label>
+                </div>
+                <div id="resumeStatus" style="margin-top:8px;font-size:13px;display:none;"></div>
+            </div>
+
+            <div class="retry-notice" id="retryNotice"></div>
+            <button id="submitBtn" onclick="submitTest()">Submit Application</button>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        let tabSwitchCount = 0;
+        let totalTime = 0;
+        let timeLeft = 0;
+        let interval = null;
+        let currentJobId = null;
+        let isSubmitting = false;
+        let pendingResumeFile = null;  // holds selected file until after submission
+
+        // ── Anti-cheat: count tab switches ──
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) tabSwitchCount++;
+        });
+
+        // ── Auto-start if Job ID is in URL (?job=XXXXX) ──
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const jobFromUrl = params.get('job');
+            if (jobFromUrl) {
+                document.getElementById('jobId').value = jobFromUrl;
+                // Hide the manual entry section and auto-load
+                startAssessment();
+            }
+        });
+
+        // ── Retry helper with exponential backoff ──
+        async function fetchWithRetry(url, options = {}, retries = 3) {
+            const retryNotice = document.getElementById('retryNotice');
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    const res = await fetch(url, options);
+                    if (retryNotice) retryNotice.style.display = 'none';
+                    return res;
+                } catch (err) {
+                    if (attempt === retries) throw err;
+                    const delay = attempt * 2000; // 2s, 4s, 6s
+                    if (retryNotice) {
+                        retryNotice.textContent = `Connection issue. Retrying in ${delay / 1000}s... (attempt ${attempt}/${retries})`;
+                        retryNotice.style.display = 'block';
+                    }
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            }
+        }
+
+        async function startAssessment() {
+            const jobId = document.getElementById('jobId').value.trim();
+            const errorEl = document.getElementById('jobError');
+            const startBtn = document.getElementById('startBtn');
+
+            errorEl.textContent = '';
+            if (!jobId) { errorEl.textContent = 'Please enter a Job ID.'; return; }
+
+            startBtn.disabled = true;
+            startBtn.textContent = 'Loading...';
+
+            try {
+                // All data comes from backend — no Supabase key in frontend
+                const res = await fetchWithRetry(`${CONFIG.BACKEND_URL}/jobs/${encodeURIComponent(jobId)}`);
+
+                if (res.status === 404) {
+                    errorEl.textContent = 'Invalid Job ID. Please check and try again.';
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start Assessment';
+                    return;
+                }
+
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
+
+                const data = await res.json();
+                const { job, questions } = data;
+
+                if (!questions || questions.length === 0) {
+                    errorEl.textContent = 'This job has no questions configured yet.';
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start Assessment';
+                    return;
+                }
+
+                currentJobId = jobId;
+                totalTime = job.time_limit_minutes * 60;
+                timeLeft = totalTime;
+
+                document.getElementById('jobInputSection').style.display = 'none';
+                document.getElementById('testSection').style.display = 'block';
+
+                // Render questions
+                const container = document.getElementById('questionsContainer');
+                container.innerHTML = '';
+                questions.forEach((q, i) => {
+                    container.innerHTML += `
+                        <div class="question-block">
+                            <p><strong>Q${i + 1}:</strong> ${escapeHtml(q.question_text)}</p>
+                            <textarea class="ans" data-q-id="${q.id}" data-q-text="${escapeAttr(q.question_text)}" rows="4" placeholder="Type your answer here..."></textarea>
+                        </div>`;
+                });
+
+                // Start countdown timer
+                updateTimer();
+                interval = setInterval(() => {
+                    timeLeft--;
+                    updateTimer();
+                    if (timeLeft <= 0) {
+                        clearInterval(interval);
+                        submitTest(true);
+                    }
+                }, 1000);
+
+            } catch (err) {
+                errorEl.textContent = 'Could not connect to the server. Please try again.';
+                console.error(err);
+                startBtn.disabled = false;
+                startBtn.textContent = 'Start Assessment';
+            }
+        }
+
+        function updateTimer() {
+            const m = Math.floor(timeLeft / 60);
+            const s = timeLeft % 60;
+            const el = document.getElementById('timer');
+            el.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+            el.classList.toggle('warning', timeLeft <= 60);
+
+            const pct = totalTime > 0 ? (timeLeft / totalTime) * 100 : 0;
+            const bar = document.getElementById('progressBar');
+            bar.style.width = pct + '%';
+            bar.style.background = timeLeft <= 60 ? '#dc3545' : '#007bff';
+        }
+
+        async function submitTest(autoSubmit = false) {
+            if (isSubmitting) return;
+            clearInterval(interval);
+
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+
+            if (!autoSubmit && (!name || !email)) {
+                alert('Please fill in your name and email before submitting.');
+                return;
+            }
+
+            isSubmitting = true;
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting...'; }
+
+            const answers = Array.from(document.querySelectorAll('.ans')).map(a => ({
+                question_id: a.dataset.qId,
+                question_text: a.dataset.qText,
+                candidate_answer: a.value.trim()
+            }));
+
+            const payload = {
+                job_id: currentJobId,
+                candidate_name: name || 'Anonymous',
+                candidate_email: email || 'unknown@unknown.com',
+                tab_switch_count: tabSwitchCount,
+                answers: answers
+            };
+
+            try {
+                const res = await fetchWithRetry(`${CONFIG.BACKEND_URL}/applications`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }, 4); // up to 4 retries for submission
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    if (res.status === 403) {
+                        document.getElementById('testSection').innerHTML = `
+                            <div style="text-align:center;padding:40px 0;">
+                                <div style="font-size:56px;">&#128683;</div>
+                                <h2 style="color:#c62828;">Maximum Attempts Reached</h2>
+                                <p style="color:#555;font-size:16px;line-height:1.7;">
+                                    You have already used both attempts for this assessment.<br>
+                                    No further attempts are allowed for this position.
+                                </p>
+                                <p style="margin-top:16px;color:#aaa;font-size:13px;">You may close this tab.</p>
+                            </div>`;
+                        return;
+                    }
+                    throw new Error(err.detail || 'Submission failed');
+                }
+
+                const result = await res.json();
+
+                // Upload resume if candidate selected one
+                if (result.application_id) {
+                    await uploadResumeIfSelected(result.application_id);
+                }
+
+                document.getElementById('testSection').innerHTML = `
+                    <div style="text-align:center;padding:40px 0;">
+                        <div style="font-size:56px;">&#10003;</div>
+                        <h2 style="color:#1a237e;margin-bottom:12px;">Test Submitted Successfully!</h2>
+                        <p style="color:#555;font-size:16px;line-height:1.7;">
+                            Thank you, <strong>${escapeHtml(name)}</strong>.<br>
+                            Your responses have been recorded.<br>
+                            Our team will review your answers and get back to you.
+                        </p>
+                        <p style="margin-top:24px;color:#aaa;font-size:13px;">You may now close this tab.</p>
+                    </div>`;
+
+            } catch (err) {
+                isSubmitting = false;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Application'; }
+                const retryNotice = document.getElementById('retryNotice');
+                if (retryNotice) {
+                    retryNotice.textContent = '❌ Submission failed after multiple attempts. Please check your connection and try again.';
+                    retryNotice.style.display = 'block';
+                    retryNotice.style.background = '#ffebee';
+                    retryNotice.style.borderColor = '#ef9a9a';
+                }
+                console.error(err);
+            }
+        }
+
+        // Security helpers — prevent XSS from question text
+        function escapeHtml(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function escapeAttr(str) {
+            return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Resume file selection handler
+        function handleResumeSelect(input) {
+            const file = input.files[0];
+            const statusEl = document.getElementById('resumeStatus');
+            if (!file) return;
+
+            const allowed = ['application/pdf',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/msword'];
+            if (!allowed.includes(file.type)) {
+                statusEl.style.display = 'block';
+                statusEl.style.color = '#c62828';
+                statusEl.textContent = 'Invalid file type. Only PDF and DOCX accepted.';
+                input.value = '';
+                pendingResumeFile = null;
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                statusEl.style.display = 'block';
+                statusEl.style.color = '#c62828';
+                statusEl.textContent = `File too large (${(file.size/1024/1024).toFixed(1)}MB). Max 5MB.`;
+                input.value = '';
+                pendingResumeFile = null;
+                return;
+            }
+            pendingResumeFile = file;
+            statusEl.style.display = 'block';
+            statusEl.style.color = '#2e7d32';
+            statusEl.textContent = `Selected: ${file.name} (${(file.size/1024).toFixed(0)}KB)`;
+        }
+
+        // Upload resume after successful submission
+        async function uploadResumeIfSelected(applicationId) {
+            if (!pendingResumeFile) return;
+            try {
+                const formData = new FormData();
+                formData.append('file', pendingResumeFile);
+                await fetch(`${CONFIG.BACKEND_URL}/applications/${applicationId}/resume`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (e) {
+                console.warn('Resume upload failed (non-critical):', e);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CorpoCalm Gateway - Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Page-specific overrides */
+        .top-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+        .top-table th {
+            background: #1a237e; color: #fff;
+            padding: 11px 14px; text-align: left; font-weight: 600; font-size: 12.5px;
+        }
+        .top-table th:first-child { border-radius: 10px 0 0 0; }
+        .top-table th:last-child  { border-radius: 0 10px 0 0; }
+        .top-table td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .top-table tr:last-child td { border-bottom: none; }
+        .top-table tr:hover td { background: #f8faff; }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <div class="navbar-brand">🔷 CorpoCalm Gateway</div>
+    <div class="navbar-nav">
+        <a href="admin.html"     class="nav-link">Publish Job</a>
+        <a href="dashboard.html" class="nav-link">Dashboard</a>
+        <a href="analytics.html" class="nav-link active">Analytics</a>
+        <span class="nav-user">| <strong id="navHrName"></strong></span>
+        <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div class="page-title">📊 Analytics Overview</div>
+        <button class="btn btn-primary" onclick="loadAnalytics()">↻ Refresh</button>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loadingSection" class="loading-msg">
+        <div class="spinner"></div>
+        <p>Loading analytics...</p>
+    </div>
+
+    <!-- Main content (hidden until loaded) -->
+    <div id="mainContent" style="display:none;">
+
+        <!-- Stat Cards -->
+        <div class="stat-grid" id="statGrid"></div>
+
+        <!-- Charts row 1 -->
+        <div class="chart-grid">
+            <!-- Monthly Applications Bar Chart -->
+            <div class="chart-card">
+                <div class="chart-title">Monthly Applications (Last 6 Months)</div>
+                <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
+            </div>
+
+            <!-- Pass vs Fail Doughnut -->
+            <div class="chart-card">
+                <div class="chart-title">Assessment Outcomes</div>
+                <div class="chart-wrap"><canvas id="outcomeChart"></canvas></div>
+            </div>
+
+            <!-- Score Distribution Bar -->
+            <div class="chart-card">
+                <div class="chart-title">Score Distribution</div>
+                <div class="chart-wrap"><canvas id="scoreDistChart"></canvas></div>
+            </div>
+
+            <!-- HR Actions Doughnut -->
+            <div class="chart-card">
+                <div class="chart-title">HR Actions</div>
+                <div class="chart-wrap"><canvas id="hrActionChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Top 5 Candidates Table -->
+        <div class="chart-card">
+            <div class="chart-title">Top 5 Candidates by AI Score</div>
+            <div id="topCandidatesTable"></div>
+        </div>
+
+    </div>
+</div>
+
+<footer>
+    CorpoCalm Gateway &nbsp;|&nbsp; Built by <strong>Priti Ganesh Lande</strong> &nbsp;|&nbsp; &copy; 2026
+</footer>
+
+<script src="config.js"></script>
+<script src="ui.js"></script>
+<script>
+    const token = localStorage.getItem('hr_token');
+    if (!token) window.location.href = 'login.html';
+
+    document.getElementById('navHrName').textContent = localStorage.getItem('hr_name') || 'HR';
+
+    // Chart instances (keep refs so we can destroy before redraw)
+    let charts = {};
+
+    function logout() {
+        localStorage.removeItem('hr_token');
+        localStorage.removeItem('hr_name');
+        localStorage.removeItem('hr_company');
+        window.location.href = 'login.html';
+    }
+
+    async function loadAnalytics() {
+        document.getElementById('loadingSection').style.display = 'block';
+        document.getElementById('mainContent').style.display   = 'none';
+
+        // Destroy old charts
+        Object.values(charts).forEach(c => c.destroy());
+        charts = {};
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/analytics`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            const d = await res.json();
+
+            renderStatCards(d);
+            renderMonthlyChart(d);
+            renderOutcomeChart(d);
+            renderScoreDistChart(d);
+            renderHRActionChart(d);
+            renderTopCandidates(d);
+
+            document.getElementById('loadingSection').style.display = 'none';
+            document.getElementById('mainContent').style.display   = 'block';
+
+        } catch (err) {
+            document.getElementById('loadingSection').innerHTML =
+                `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Failed to load analytics</div><div class="empty-sub">${err.message}</div></div>`;
+            showToast(err.message, 'error', 'Failed to load');
+        }
+    }
+
+    // ── Stat Cards ──
+    function renderStatCards(d) {
+        const cards = [
+            { label: 'Total Candidates',        value: d.total_candidates,  sub: 'all submissions',        cls: '' },
+            { label: 'Active Jobs',              value: d.active_jobs,       sub: 'published job postings', cls: 'teal' },
+            { label: 'Assessments Completed',    value: d.assessments_done,  sub: 'scored submissions',     cls: 'purple' },
+            { label: 'Avg Assessment Score',     value: d.avg_score + '%',   sub: 'across all scored',      cls: 'orange' },
+            { label: 'Shortlisted',              value: d.shortlisted,       sub: 'by HR review',           cls: 'green' },
+            { label: 'Rejected',                 value: d.rejected,          sub: 'by HR review',           cls: 'red' },
+        ];
+
+        document.getElementById('statGrid').innerHTML = cards.map(c => `
+            <div class="stat-card ${c.cls}">
+                <div class="stat-label">${c.label}</div>
+                <div class="stat-value">${c.value}</div>
+                <div class="stat-sub">${c.sub}</div>
+            </div>`).join('');
+    }
+
+    // ── Monthly Bar Chart ──
+    function renderMonthlyChart(d) {
+        const ctx = document.getElementById('monthlyChart').getContext('2d');
+        charts.monthly = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: d.monthly_labels,
+                datasets: [{
+                    label: 'Applications',
+                    data: d.monthly_values,
+                    backgroundColor: 'rgba(26,35,126,0.75)',
+                    borderColor: '#1a237e',
+                    borderWidth: 1,
+                    borderRadius: 5
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f0f0f0' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // ── Pass vs Fail Doughnut ──
+    function renderOutcomeChart(d) {
+        const ctx = document.getElementById('outcomeChart').getContext('2d');
+        const noData = d.passed === 0 && d.failed === 0;
+        charts.outcome = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: noData ? ['No Data'] : ['Passed', 'Failed'],
+                datasets: [{
+                    data: noData ? [1] : [d.passed, d.failed],
+                    backgroundColor: noData ? ['#e0e0e0'] : ['#2e7d32', '#c62828'],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 16 } }
+                },
+                cutout: '62%'
+            }
+        });
+    }
+
+    // ── Score Distribution Bar ──
+    function renderScoreDistChart(d) {
+        const ctx = document.getElementById('scoreDistChart').getContext('2d');
+        const dist = d.score_distribution;
+        charts.scoreDist = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(dist),
+                datasets: [{
+                    label: 'Candidates',
+                    data: Object.values(dist),
+                    backgroundColor: ['#ef5350','#ff9800','#ffee58','#66bb6a','#26a69a'],
+                    borderRadius: 5
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f0f0f0' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // ── HR Actions Doughnut ──
+    function renderHRActionChart(d) {
+        const ctx = document.getElementById('hrActionChart').getContext('2d');
+        const noAction = d.shortlisted === 0 && d.rejected === 0;
+        const reviewing = d.total_candidates - d.shortlisted - d.rejected;
+        charts.hrAction = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: noAction ? ['No Actions Yet'] : ['Shortlisted', 'Rejected', 'Pending Review'],
+                datasets: [{
+                    data: noAction ? [1] : [d.shortlisted, d.rejected, Math.max(0, reviewing)],
+                    backgroundColor: noAction ? ['#e0e0e0'] : ['#2e7d32', '#c62828', '#90a4ae'],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 16 } }
+                },
+                cutout: '62%'
+            }
+        });
+    }
+
+    // ── Top 5 Candidates Table ──
+    function renderTopCandidates(d) {
+        const container = document.getElementById('topCandidatesTable');
+        if (!d.top_candidates || d.top_candidates.length === 0) {
+            container.innerHTML = `<div class="empty-state"><div class="empty-icon">🏆</div><div class="empty-title">No scored candidates yet</div><div class="empty-sub">Candidates will appear here once assessments are completed.</div></div>`;
+            return;
+        }
+
+        const rows = d.top_candidates.map((c, i) => {
+            const rankCls   = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'rank-other';
+            const scoreCls  = c.score >= 70 ? 'score-high' : c.score >= 40 ? 'score-mid' : 'score-low';
+            const statusBadge = c.status === 'Passed'
+                ? '<span class="badge-sm badge-passed">Passed</span>'
+                : '<span class="badge-sm badge-failed">Failed</span>';
+            const hrBadge = c.hr_status === 'Shortlisted'
+                ? '<span class="badge-sm badge-shortlisted">Shortlisted</span>'
+                : c.hr_status ? `<span class="badge-sm" style="background:#eee;color:#555;">${c.hr_status}</span>` : '';
+
+            return `<tr>
+                <td><span class="rank-badge ${rankCls}">${i + 1}</span></td>
+                <td><strong>${c.name}</strong></td>
+                <td style="color:#666;font-size:13px;">${c.email}</td>
+                <td><span class="score-pill ${scoreCls}">${c.score} / 100</span></td>
+                <td>${statusBadge}</td>
+                <td>${hrBadge}</td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="top-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>AI Score</th>
+                        <th>Assessment</th>
+                        <th>HR Status</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    // Load on page open
+    loadAnalytics();
+</script>
+</body>
+</html>

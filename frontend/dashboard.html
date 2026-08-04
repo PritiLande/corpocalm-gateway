@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CorpoCalm Gateway - HR Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Dashboard-specific layout */
+        body { padding: 0; }
+        .container { max-width: 1280px; margin: 28px auto; padding: 0 20px 48px; }
+        .topbar {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 22px; flex-wrap: wrap; gap: 12px;
+        }
+        .topbar h1 { margin: 0; font-size: 20px; color: #1a237e; }
+        .logout-btn {
+            background: #fff; border: 1.5px solid #e2e8f0;
+            padding: 6px 14px; border-radius: 7px; cursor: pointer;
+            font-size: 13px; color: #475569; font-weight: 500;
+            transition: all 0.15s;
+        }
+        .logout-btn:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+        .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+        .controls input { padding: 9px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; width: 260px; font-size: 13.5px; transition: border-color 0.18s; }
+        .controls input:focus { border-color: #4f46e5; outline: none; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+        .controls button { padding: 9px 18px; background: #1a237e; color: #fff; border: none; cursor: pointer; border-radius: 8px; font-size: 13.5px; font-weight: 600; transition: background 0.18s; }
+        .controls button:hover { background: #283593; }
+
+        /* Filter bar */
+        .filter-bar { background: #f8faff; border: 1.5px solid #e8eaf6; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+        .filter-bar label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.4px; }
+        .filter-bar input, .filter-bar select { width: 100%; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 7px; font-size: 13px; background: #fff; }
+        .filter-bar input:focus, .filter-bar select:focus { border-color: #4f46e5; outline: none; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+        .filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+        .filter-field { flex: 1; min-width: 130px; }
+        .filter-field-sm { width: 90px; min-width: 80px; }
+
+        /* Table wrapper */
+        .table-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 14px rgba(26,35,126,0.06); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead tr { background: #1a237e; }
+        thead th { padding: 11px 13px; text-align: left; font-weight: 600; font-size: 12px; color: #fff; white-space: nowrap; }
+        thead th:first-child { border-radius: 12px 0 0 0; }
+        thead th:last-child  { border-radius: 0 12px 0 0; }
+        tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.12s; }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: #f8faff; }
+        tbody td { padding: 10px 13px; vertical-align: middle; color: #334155; }
+
+        /* Action button group */
+        .action-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+        .detail-btn {
+            background: none; border: 1.5px solid #4f46e5; color: #4f46e5;
+            padding: 4px 10px; cursor: pointer; border-radius: 6px; font-size: 12px; font-weight: 600;
+            transition: all 0.15s;
+        }
+        .detail-btn:hover { background: #4f46e5; color: #fff; }
+        .profile-link {
+            background: none; border: 1.5px solid #7c3aed; color: #7c3aed;
+            padding: 4px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; font-weight: 600;
+            transition: all 0.15s; display: inline-block;
+        }
+        .profile-link:hover { background: #7c3aed; color: #fff; }
+
+        .empty-msg { text-align: center; color: #64748b; padding: 52px; }
+        .loading   { text-align: center; color: #64748b; padding: 52px; }
+
+        /* Notes section in modal */
+        .notes-section { margin-top: 20px; padding-top: 16px; border-top: 2px solid #f1f5f9; }
+        .notes-section label { font-weight: 700; font-size: 13px; display: block; margin-bottom: 7px; color: #475569; }
+        .notes-section textarea { width: 100%; padding: 10px 13px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 13px; resize: vertical; font-family: inherit; }
+        .notes-section textarea:focus { border-color: #4f46e5; outline: none; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+        .save-notes-btn { margin-top: 8px; padding: 8px 18px; background: #1a237e; color: #fff; border: none; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.18s; }
+        .save-notes-btn:hover { background: #283593; }
+        .notes-saved { color: #16a34a; font-size: 12px; margin-left: 10px; font-weight: 600; display: none; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <h1>📋 CorpoCalm Gateway — HR Dashboard</h1>
+        <div style="display:flex;align-items:center;gap:14px;">
+            <a href="admin.html"     style="color:#1a237e;font-size:13px;text-decoration:none;font-weight:600;">📝 Publish Job</a>
+            <a href="analytics.html" style="color:#1a237e;font-size:13px;text-decoration:none;font-weight:600;">📊 Analytics</a>
+            <span style="font-size:14px;color:#475569;">| Welcome, <strong id="hrNameDisplay"></strong></span>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="filterJobId" placeholder="🔍 Filter by Job ID (optional)">
+        <button onclick="fetchApplications()">↻ Load / Refresh</button>
+        <button onclick="exportCSV()" style="background:#16a34a;">⬇ Export CSV</button>
+    </div>
+
+    <!-- Search & Filter Bar -->
+    <div class="filter-bar">
+        <div class="filter-row">
+            <div class="filter-field">
+                <label>Search Name</label>
+                <input type="text" id="searchName" placeholder="e.g. Priti">
+            </div>
+            <div class="filter-field">
+                <label>Search Email</label>
+                <input type="text" id="searchEmail" placeholder="e.g. priti@gmail.com">
+            </div>
+            <div class="filter-field">
+                <label>AI Status</label>
+                <select id="filterStatus">
+                    <option value="">All</option>
+                    <option value="Passed">Passed</option>
+                    <option value="Failed">Failed</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label>HR Status</label>
+                <select id="filterHRStatus">
+                    <option value="">All</option>
+                    <option value="Shortlisted">Shortlisted</option>
+                    <option value="Reviewing">Reviewing</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
+            </div>
+            <div class="filter-field-sm">
+                <label>Min Score</label>
+                <input type="number" id="minScore" placeholder="0" min="0" max="100">
+            </div>
+            <div class="filter-field-sm">
+                <label>Max Score</label>
+                <input type="number" id="maxScore" placeholder="100" min="0" max="100">
+            </div>
+            <div class="filter-field">
+                <label>Sort By</label>
+                <select id="sortBy">
+                    <option value="created_at">Date</option>
+                    <option value="ai_score">Score</option>
+                    <option value="candidate_name">Name</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label>Order</label>
+                <select id="sortDir">
+                    <option value="desc">Newest First</option>
+                    <option value="asc">Oldest First</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:6px;align-items:flex-end;padding-bottom:0;">
+                <button onclick="applyFilters()" style="padding:8px 16px;background:#1a237e;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap;">Apply</button>
+                <button onclick="resetFilters()" style="padding:8px 12px;background:#f8fafc;color:#475569;border:1.5px solid #e2e8f0;border-radius:7px;cursor:pointer;font-size:13px;">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tableWrapper">
+        <div class="empty-state"><div class="empty-icon">📂</div><div class="empty-title">No applications loaded</div><div class="empty-sub">Click "↻ Load / Refresh" to see all applications.</div></div>
+    </div>
+    <div id="paginationBar" class="pagination"></div>
+</div>
+
+<!-- Answer + Notes Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModalDirect()">&#10005;</button>
+        <div id="modalBody"></div>
+    </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+    let allApplications = [];
+    let currentPage = 1;
+    let currentFilters = {};
+    const token = localStorage.getItem('hr_token');
+
+    if (!token) window.location.href = 'login.html';
+
+    window.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('hrNameDisplay').textContent = localStorage.getItem('hr_name') || 'HR';
+    });
+
+    function logout() {
+        localStorage.removeItem('hr_token');
+        localStorage.removeItem('hr_name');
+        window.location.href = 'login.html';
+    }
+
+    function applyFilters() {
+        currentPage = 1;
+        currentFilters = {
+            job_id:    document.getElementById('filterJobId').value.trim(),
+            name:      document.getElementById('searchName').value.trim(),
+            email:     document.getElementById('searchEmail').value.trim(),
+            status:    document.getElementById('filterStatus').value,
+            hr_status: document.getElementById('filterHRStatus').value,
+            min_score: document.getElementById('minScore').value,
+            max_score: document.getElementById('maxScore').value,
+            sort_by:   document.getElementById('sortBy').value,
+            sort_dir:  document.getElementById('sortDir').value,
+        };
+        fetchApplications();
+    }
+
+    function resetFilters() {
+        ['filterJobId','searchName','searchEmail','minScore','maxScore'].forEach(id => document.getElementById(id).value = '');
+        ['filterStatus','filterHRStatus'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('sortBy').value = 'created_at';
+        document.getElementById('sortDir').value = 'desc';
+        currentFilters = {};
+        currentPage = 1;
+        fetchApplications();
+    }
+
+    async function fetchApplications(page) {
+        if (page) currentPage = page;
+        const wrapper = document.getElementById('tableWrapper');
+        wrapper.innerHTML = '<p class="loading">Loading...</p>';
+
+        try {
+            const p = currentFilters;
+            let url = `${CONFIG.BACKEND_URL}/applications?page=${currentPage}&page_size=15`;
+            if (p.job_id)    url += `&job_id=${encodeURIComponent(p.job_id)}`;
+            if (p.name)      url += `&name=${encodeURIComponent(p.name)}`;
+            if (p.email)     url += `&email=${encodeURIComponent(p.email)}`;
+            if (p.status)    url += `&status=${encodeURIComponent(p.status)}`;
+            if (p.hr_status) url += `&hr_status=${encodeURIComponent(p.hr_status)}`;
+            if (p.min_score) url += `&min_score=${encodeURIComponent(p.min_score)}`;
+            if (p.max_score) url += `&max_score=${encodeURIComponent(p.max_score)}`;
+            if (p.sort_by)   url += `&sort_by=${encodeURIComponent(p.sort_by)}`;
+            if (p.sort_dir)  url += `&sort_dir=${encodeURIComponent(p.sort_dir)}`;
+
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            const result = await res.json();
+
+            // Support both old array response and new paginated response
+            const data = Array.isArray(result) ? result : (result.data || []);
+            const total = Array.isArray(result) ? result.length : (result.total || 0);
+            const totalPages = Array.isArray(result) ? 1 : (result.total_pages || 1);
+
+            allApplications = data;
+            renderTable(data);
+            renderPagination(currentPage, totalPages, total);
+        } catch (err) {
+            wrapper.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Failed to load</div><div class="empty-sub">${err.message}</div></div>`;
+            showToast(err.message, 'error', 'Load failed');
+        }
+    }
+
+    function renderPagination(page, totalPages, total) {
+        const bar = document.getElementById('paginationBar');
+        if (totalPages <= 1) { bar.innerHTML = `<span>Showing <strong>${total}</strong> result${total!==1?'s':''}</span>`; return; }
+        let btns = '';
+        for (let i = 1; i <= totalPages; i++) {
+            btns += `<button onclick="fetchApplications(${i})" class="page-btn${i===page?' active':''}">${i}</button>`;
+        }
+        bar.innerHTML = `<span>Total: <strong>${total}</strong> results</span><div style="display:flex;gap:5px;">${btns}</div>`;
+    }
+
+    function renderTable(data) {
+        const wrapper = document.getElementById('tableWrapper');
+        if (!data || data.length === 0) {
+            wrapper.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No applications found</div><div class="empty-sub">Try adjusting your filters or load all applications.</div></div>`;
+            return;
+        }
+
+        const rows = data.map(app => {
+            const scoreCls = app.ai_score >= 70 ? 'score-high' : app.ai_score >= 40 ? 'score-mid' : 'score-low';
+            const scoreDisplay = app.ai_score != null
+                ? `<span class="${scoreCls}">${app.ai_score}</span>`
+                : '<span style="color:#94a3b8">N/A</span>';
+            const tabCls = app.tab_switch_count > 2 ? 'tab-warn' : '';
+            const hrStatus = app.hr_status || '';
+            const statusBadge = getStatusBadge(app.status, hrStatus);
+
+            const shortlistDisabled = hrStatus === 'Shortlisted' ? 'btn-disabled' : '';
+            const rejectDisabled    = hrStatus === 'Rejected'    ? 'btn-disabled' : '';
+            const reviewDisabled    = hrStatus === 'Reviewing'   ? 'btn-disabled' : '';
+
+            return `<tr id="row-${app.id}">
+                <td><strong>${app.candidate_name || 'N/A'}</strong></td>
+                <td style="color:#64748b;">${app.candidate_email || 'N/A'}</td>
+                <td>${scoreDisplay}</td>
+                <td>${statusBadge}</td>
+                <td class="${tabCls}">${app.tab_switch_count ?? 0}${app.tab_switch_count > 2 ? ' ⚠️' : ''}</td>
+                <td style="color:#64748b;font-size:12.5px;">${app.submit_time ? new Date(app.submit_time).toLocaleString() : new Date(app.created_at).toLocaleString()}</td>
+                <td>
+                    <div class="action-btns">
+                        <button class="btn-shortlist ${shortlistDisabled}" onclick="updateHRStatus('${app.id}', 'Shortlisted')">✓ Shortlist</button>
+                        <button class="btn-review ${reviewDisabled}" onclick="updateHRStatus('${app.id}', 'Reviewing')">🔍 Review</button>
+                        <button class="btn-reject ${rejectDisabled}" onclick="updateHRStatus('${app.id}', 'Rejected')">✗ Reject</button>
+                    </div>
+                </td>
+                <td>
+                    <div class="action-btns">
+                        <button class="detail-btn" onclick="showAnswers('${app.id}')">Answers</button>
+                        <a href="candidate-profile.html?id=${app.id}" class="profile-link">Profile</a>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+
+        wrapper.innerHTML = `
+            <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>AI Score</th>
+                        <th>Status</th>
+                        <th>Tab Switches</th>
+                        <th>Submitted At</th>
+                        <th>HR Action</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            </div>`;
+    }
+
+    function getStatusBadge(aiStatus, hrStatus) {
+        if (hrStatus === 'Shortlisted') return `<span class="badge badge-shortlisted">Shortlisted</span>`;
+        if (hrStatus === 'Rejected')    return `<span class="badge badge-rejected">Rejected</span>`;
+        if (hrStatus === 'Reviewing')   return `<span class="badge badge-reviewing">Reviewing</span>`;
+        if (aiStatus === 'Passed')      return `<span class="badge badge-passed">Passed</span>`;
+        if (aiStatus === 'Failed')      return `<span class="badge badge-failed">Failed</span>`;
+        return `<span class="badge badge-submitted">Submitted</span>`;
+    }
+
+    async function updateHRStatus(applicationId, hrStatus) {
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/applications/${applicationId}/hr-status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ hr_status: hrStatus })
+            });
+            if (!res.ok) throw new Error('Failed to update');
+
+            // Update local data and re-render
+            const app = allApplications.find(a => a.id === applicationId);
+            if (app) app.hr_status = hrStatus;
+            renderTable(allApplications);
+            showToast(`Candidate marked as ${hrStatus}`, 'success');
+
+        } catch (err) {
+            showToast('Failed to update status: ' + err.message, 'error');
+        }
+    }
+
+    async function showAnswers(applicationId) {
+        const modalBody = document.getElementById('modalBody');
+        modalBody.innerHTML = '<p>Loading...</p>';
+        document.getElementById('modalOverlay').classList.add('open');
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/applications/${applicationId}/answers`);
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            const data = await res.json();
+
+            const app = allApplications.find(a => a.id === applicationId);
+            const name = app ? app.candidate_name : 'Candidate';
+            const notes = app ? (app.hr_notes || '') : '';
+
+            const answersHtml = (!data || data.length === 0)
+                ? '<p style="color:#666">No answers recorded.</p>'
+                : data.map((a, i) => `
+                    <div class="answer-block">
+                        <p class="q-label">Q${i + 1}: ${a.question_text}</p>
+                        <p class="a-label">${a.candidate_answer || '<em style="color:#aaa">No answer provided</em>'}</p>
+                    </div>`).join('');
+
+            modalBody.innerHTML = `
+                <h2>${name}'s Answers</h2>
+                ${answersHtml}
+                <div class="notes-section">
+                    <label>HR Notes (internal — candidate cannot see this)</label>
+                    <textarea id="hrNotes_${applicationId}" rows="4" placeholder="Add your notes about this candidate...">${notes}</textarea>
+                    <br>
+                    <button class="save-notes-btn" onclick="saveNotes('${applicationId}')">Save Notes</button>
+                    <span class="notes-saved" id="notesSaved_${applicationId}">Saved!</span>
+                </div>`;
+        } catch (err) {
+            modalBody.innerHTML = `<p style="color:red">Failed to load: ${err.message}</p>`;
+        }
+    }
+
+    async function saveNotes(applicationId) {
+        const notes = document.getElementById(`hrNotes_${applicationId}`).value;
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/applications/${applicationId}/hr-status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ hr_notes: notes })
+            });
+            if (!res.ok) throw new Error('Failed');
+
+            // Update local data
+            const app = allApplications.find(a => a.id === applicationId);
+            if (app) app.hr_notes = notes;
+
+            const saved = document.getElementById(`notesSaved_${applicationId}`);
+            saved.style.display = 'inline';
+            setTimeout(() => saved.style.display = 'none', 2000);
+            showToast('Notes saved successfully', 'success');
+        } catch (err) {
+            showToast('Failed to save notes: ' + err.message, 'error');
+        }
+    }
+
+    function closeModal(event) {
+        if (event.target === document.getElementById('modalOverlay')) closeModalDirect();
+    }
+    function closeModalDirect() {
+        document.getElementById('modalOverlay').classList.remove('open');
+    }
+
+    function exportCSV() {
+        if (!allApplications || allApplications.length === 0) {
+            alert('No data to export. Please load applications first.');
+            return;
+        }
+
+        const headers = ['Name', 'Email', 'AI Score', 'AI Status', 'HR Status', 'HR Notes', 'Tab Switches', 'Attempt', 'Submitted At'];
+
+        const rows = allApplications.map(app => [
+            app.candidate_name || '',
+            app.candidate_email || '',
+            app.ai_score != null ? app.ai_score : '',
+            app.status || '',
+            app.hr_status || '',
+            (app.hr_notes || '').replace(/,/g, ';').replace(/\n/g, ' '),
+            app.tab_switch_count ?? 0,
+            app.attempt_number || 1,
+            app.submit_time ? new Date(app.submit_time).toLocaleString() : new Date(app.created_at).toLocaleString()
+        ]);
+
+        const csvContent = [headers, ...rows]
+            .map(row => row.map(val => `"${val}"`).join(','))
+            .join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href     = url;
+        link.download = `corpocalm-candidates-${new Date().toISOString().slice(0,10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+</script>
+</body>
+</html>
