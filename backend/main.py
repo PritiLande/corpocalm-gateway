@@ -81,10 +81,28 @@ class GenerateQuestionsRequest(BaseModel):
     role_title: str
     skills_required: Optional[str] = None
 
-def create_token(hr_id: str, email: str) -> str:
+class GenerateDescriptionRequest(BaseModel):
+    role_title: str
+    skills_required: Optional[str] = None
+    job_type: Optional[str] = None
+    experience_required: Optional[str] = None
+    location: Optional[str] = None
+
+class GenerateSkillsRequest(BaseModel):
+    role_title: str
+    job_type: Optional[str] = None
+    experience_required: Optional[str] = None
+    description: Optional[str] = None
+
+class GenerateFullJobRequest(BaseModel):
+    role_title: str
+
+def create_token(hr_id: str, email: str, company_id: str = "", role: str = "admin") -> str:
     payload = {
         "sub": hr_id,
         "email": email,
+        "company_id": company_id,
+        "role": role,
         "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -109,18 +127,18 @@ app.add_middleware(
 # 2. AI SCORING ENGINE (Groq LLaMA 3)
 # ──────────────────────────────────────────
 
-def compute_ai_score(answers: list) -> int:
+def compute_ai_score(answers: list) -> tuple[int, str]:
     """
     Uses Groq LLaMA 3 to intelligently score candidate answers.
     Falls back to keyword-based scoring if Groq is not configured.
-    Returns a score 0-100.
+    Returns (score 0-100, feedback_text).
     """
     if not answers:
-        return 0
+        return 0, ""
 
     # ── Fallback: keyword + length scoring if no Groq key ──
     if not groq_client:
-        return _fallback_score(answers)
+        return _fallback_score(answers), ""
 
     try:
         # Build Q&A pairs for the prompt
@@ -128,9 +146,9 @@ def compute_ai_score(answers: list) -> int:
         for i, a in enumerate(answers, 1):
             qa_text += f"Q{i}: {a.question_text}\nAnswer: {a.candidate_answer or '(no answer provided)'}\n\n"
 
-        prompt = f"""You are a technical HR evaluator. Score the following candidate answers.
+        prompt = f"""You are a senior technical HR evaluator. Score and explain the following candidate answers.
 
-For each answer, give a score from 0 to 100 based on:
+For each answer evaluate:
 - Accuracy and correctness
 - Depth and detail of explanation
 - Practical understanding shown
@@ -140,7 +158,13 @@ Answers to evaluate:
 {qa_text}
 
 Respond ONLY with a valid JSON object in this exact format, nothing else:
-{{"scores": [score1, score2, ...], "overall_feedback": "one sentence summary"}}
+{{
+  "scores": [score1, score2, ...],
+  "per_question": ["one sentence feedback for Q1", "one sentence feedback for Q2", ...],
+  "strengths": "2-3 specific things the candidate did well",
+  "improvements": "2-3 specific areas where the candidate could improve",
+  "overall_feedback": "2-3 sentence professional summary explaining why this score was given"
+}}
 
 Where each score is an integer 0-100 matching each question in order."""
 
@@ -148,13 +172,12 @@ Where each score is an integer 0-100 matching each question in order."""
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
-            max_tokens=300
+            max_tokens=600
         )
 
         content = response.choices[0].message.content.strip()
 
-        # Parse JSON response
-        # Handle case where model wraps in markdown code block
+        # Strip markdown code blocks if present
         if "```" in content:
             content = content.split("```")[1]
             if content.startswith("json"):
@@ -164,14 +187,25 @@ Where each score is an integer 0-100 matching each question in order."""
         scores = result.get("scores", [])
 
         if not scores:
-            return _fallback_score(answers)
+            return _fallback_score(answers), ""
 
         avg = round(sum(scores) / len(scores))
-        return max(0, min(avg, 100))
+        score = max(0, min(avg, 100))
+
+        # Build structured feedback text stored as JSON string
+        feedback = json.dumps({
+            "per_question":   result.get("per_question", []),
+            "strengths":      result.get("strengths", ""),
+            "improvements":   result.get("improvements", ""),
+            "overall":        result.get("overall_feedback", ""),
+            "question_scores": scores
+        })
+
+        return score, feedback
 
     except Exception as e:
         print(f"[Groq Warning] AI scoring failed, using fallback: {e}")
-        return _fallback_score(answers)
+        return _fallback_score(answers), ""
 
 
 def _fallback_score(answers: list) -> int:
@@ -208,23 +242,45 @@ def determine_status(score: int, passing_threshold: int) -> str:
 # 3. EMAIL NOTIFICATION
 # ──────────────────────────────────────────
 
-def send_candidate_confirmation(candidate_name: str, candidate_email: str, role_title: str):
-    """Sends a confirmation email to the candidate after submission."""
+def send_candidate_confirmation(candidate_name: str, candidate_email: str, role_title: str,
+                               ai_score: int = None, status: str = None):
+    """Sends a confirmation email to the candidate after submission, including their score and result."""
     if not SMTP_USER or not SMTP_PASSWORD:
         return
 
     try:
-        subject = f"Assessment Submitted - {role_title} | CorpoCalm Gateway"
+        passed = status == "Passed"
+        result_color  = "#2e7d32" if passed else "#c62828"
+        result_bg     = "#e8f5e9" if passed else "#ffebee"
+        result_border = "#a5d6a7" if passed else "#ef9a9a"
+        result_label  = "✅ Passed" if passed else "❌ Did Not Meet Threshold"
+        result_msg    = (
+            "Congratulations! You have passed the screening assessment. Our HR team will review your application and reach out with next steps."
+            if passed else
+            "Unfortunately, your score did not meet the minimum threshold for this role. You are welcome to apply for other positions."
+        )
+
+        score_block = ""
+        if ai_score is not None:
+            score_block = f"""
+            <div style="background:{result_bg};border:1px solid {result_border};border-radius:8px;padding:16px 20px;margin:20px 0;text-align:center;">
+                <div style="font-size:13px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Your Score</div>
+                <div style="font-size:36px;font-weight:800;color:{result_color};">{ai_score}<span style="font-size:16px;font-weight:500;color:#888;"> / 100</span></div>
+                <div style="margin-top:8px;font-weight:700;color:{result_color};font-size:15px;">{result_label}</div>
+            </div>"""
+
+        subject = f"Assessment Result — {role_title} | CorpoCalm Gateway"
         body = f"""
         <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
             <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:24px;color:white;text-align:center;">
                 <h2 style="margin:0;">CorpoCalm Gateway</h2>
-                <p style="margin:4px 0 0;opacity:0.85;font-size:13px;">Assessment Submitted</p>
+                <p style="margin:4px 0 0;opacity:0.85;font-size:13px;">Assessment Result</p>
             </div>
             <div style="padding:28px 24px;">
                 <p>Dear <strong>{candidate_name}</strong>,</p>
-                <p style="margin-top:12px;">Your screening assessment for <strong>{role_title}</strong> has been submitted successfully.</p>
-                <p style="margin-top:12px;">Your responses have been recorded and will be reviewed by our HR team. We will contact you if your profile matches our requirements.</p>
+                <p style="margin-top:12px;">Thank you for completing the screening assessment for <strong>{role_title}</strong>.</p>
+                {score_block}
+                <p style="margin-top:12px;">{result_msg}</p>
                 <p style="margin-top:24px;color:#aaa;font-size:12px;">Please do not reply to this email.</p>
             </div>
             <div style="background:#f5f5f5;padding:14px;text-align:center;font-size:11px;color:#aaa;">
@@ -233,7 +289,7 @@ def send_candidate_confirmation(candidate_name: str, candidate_email: str, role_
         </div>"""
         _send_email(candidate_email, subject, body)
     except Exception as e:
-        print(f"[Email Warning] Assessment completed email failed: {e}")
+        print(f"[Email Warning] Assessment result email failed: {e}")
 
 
 def send_shortlisted_email(candidate_name: str, candidate_email: str, role_title: str):
@@ -262,6 +318,35 @@ def send_shortlisted_email(candidate_name: str, candidate_email: str, role_title
         _send_email(candidate_email, subject, body)
     except Exception as e:
         print(f"[Email Warning] Shortlisted email failed: {e}")
+
+
+def send_rejected_email(candidate_name: str, candidate_email: str, role_title: str):
+    """Notifies candidate they have been rejected."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return
+    try:
+        subject = f"Application Update — {role_title} | CorpoCalm Gateway"
+        body = f"""
+        <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#37474f,#546e7a);padding:24px;color:white;text-align:center;">
+                <h2 style="margin:0;">CorpoCalm Gateway</h2>
+                <p style="margin:4px 0 0;opacity:0.85;font-size:13px;">Application Update</p>
+            </div>
+            <div style="padding:28px 24px;">
+                <p>Dear <strong>{candidate_name}</strong>,</p>
+                <p style="margin-top:12px;">Thank you for your interest in the <strong>{role_title}</strong> position and for taking the time to complete our assessment.</p>
+                <p style="margin-top:12px;">After careful consideration, we have decided to move forward with other candidates whose profiles more closely match our current requirements.</p>
+                <p style="margin-top:12px;">We appreciate the effort you put into the process and encourage you to apply for future opportunities that match your skills.</p>
+                <p style="margin-top:12px;">We wish you the very best in your job search.</p>
+                <p style="margin-top:24px;color:#aaa;font-size:12px;">Please do not reply to this email.</p>
+            </div>
+            <div style="background:#f5f5f5;padding:14px;text-align:center;font-size:11px;color:#aaa;">
+                CorpoCalm Gateway &nbsp;|&nbsp; Built by Priti Ganesh Lande
+            </div>
+        </div>"""
+        _send_email(candidate_email, subject, body)
+    except Exception as e:
+        print(f"[Email Warning] Rejection email failed: {e}")
 
 
 def send_interview_scheduled_email(candidate_name: str, candidate_email: str, role_title: str, interview_details: str):
@@ -441,9 +526,19 @@ def hr_signup(data: HRSignup):
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
     hashed = hash_password(data.password)
+
+    # Create company first
+    company_res = supabase.table("companies").insert({"name": data.company_name}).execute()
+    if not company_res.data:
+        raise HTTPException(status_code=500, detail="Failed to create company.")
+    company_id = company_res.data[0]["id"]
+
+    # Create HR user as admin of that company
     res = supabase.table("hr_users").insert({
         "name": data.name,
         "company_name": data.company_name,
+        "company_id": company_id,
+        "role": "admin",
         "email": data.email,
         "password_hash": hashed
     }).execute()
@@ -469,8 +564,252 @@ def hr_login(data: HRLogin):
     if not verify_password(data.password, hr["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    token = create_token(str(hr["id"]), hr["email"])
-    return {"token": token, "name": hr["name"], "email": hr["email"], "company_name": hr.get("company_name", "")}
+    token = create_token(
+        hr_id=str(hr["id"]),
+        email=hr["email"],
+        company_id=str(hr.get("company_id") or ""),
+        role=hr.get("role", "admin")
+    )
+    return {
+        "token": token,
+        "name": hr["name"],
+        "email": hr["email"],
+        "company_name": hr.get("company_name", ""),
+        "company_id": str(hr.get("company_id") or ""),
+        "role": hr.get("role", "admin")
+    }
+
+
+# ──────────────────────────────────────────
+# TEAM MANAGEMENT ENDPOINTS
+# ──────────────────────────────────────────
+
+import secrets
+
+class InviteMemberRequest(BaseModel):
+    email: EmailStr
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+    name: str
+    password: str = Field(..., min_length=6, max_length=72)
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: str  # 'admin' or 'member'
+
+
+@app.post("/team/invite", summary="Invite a team member (admin only)")
+def invite_team_member(data: InviteMemberRequest, hr=Depends(get_current_hr)):
+    """Sends an invite to a new HR team member. Only admins can invite."""
+    if hr.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can invite team members.")
+
+    company_id = hr.get("company_id")
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Your account is not linked to a company.")
+
+    # Check if already a member
+    existing = supabase.table("hr_users").select("id").eq("email", data.email).execute()
+    if existing.data:
+        raise HTTPException(status_code=400, detail="This email is already registered.")
+
+    # Check for existing pending invite
+    existing_invite = supabase.table("team_invites")\
+        .select("id")\
+        .eq("company_id", company_id)\
+        .eq("invited_email", data.email)\
+        .eq("status", "pending")\
+        .execute()
+    if existing_invite.data:
+        raise HTTPException(status_code=400, detail="An invite has already been sent to this email.")
+
+    # Get inviter info
+    inviter_res = supabase.table("hr_users").select("id, name").eq("email", hr["email"]).execute()
+    inviter_id = inviter_res.data[0]["id"] if inviter_res.data else None
+
+    # Get company name
+    company_res = supabase.table("companies").select("name").eq("id", company_id).execute()
+    company_name = company_res.data[0]["name"] if company_res.data else "your company"
+
+    # Generate unique invite token
+    invite_token = secrets.token_urlsafe(32)
+
+    supabase.table("team_invites").insert({
+        "company_id": company_id,
+        "invited_email": data.email,
+        "invited_by": inviter_id,
+        "token": invite_token,
+        "status": "pending"
+    }).execute()
+
+    # Send invite email
+    _send_team_invite_email(
+        to_email=data.email,
+        inviter_name=inviter_res.data[0]["name"] if inviter_res.data else "HR Admin",
+        company_name=company_name,
+        invite_token=invite_token
+    )
+
+    return {"message": f"Invite sent to {data.email}"}
+
+
+@app.post("/team/accept-invite", summary="Accept a team invite and create account")
+def accept_invite(data: AcceptInviteRequest):
+    """Called when an invited member clicks the invite link and signs up."""
+    # Validate token
+    invite_res = supabase.table("team_invites")\
+        .select("*")\
+        .eq("token", data.token)\
+        .eq("status", "pending")\
+        .execute()
+
+    if not invite_res.data:
+        raise HTTPException(status_code=400, detail="Invalid or expired invite link.")
+
+    invite = invite_res.data[0]
+
+    # Check expiry
+    from datetime import timezone
+    expires_at = datetime.fromisoformat(invite["expires_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="This invite link has expired.")
+
+    # Check email not already registered
+    existing = supabase.table("hr_users").select("id").eq("email", invite["invited_email"]).execute()
+    if existing.data:
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+    # Get company info
+    company_res = supabase.table("companies").select("name").eq("id", invite["company_id"]).execute()
+    company_name = company_res.data[0]["name"] if company_res.data else ""
+
+    hashed = hash_password(data.password)
+    res = supabase.table("hr_users").insert({
+        "name": data.name,
+        "email": invite["invited_email"],
+        "password_hash": hashed,
+        "company_id": invite["company_id"],
+        "company_name": company_name,
+        "role": "member"
+    }).execute()
+
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create account.")
+
+    # Mark invite as accepted
+    supabase.table("team_invites").update({"status": "accepted"}).eq("id", invite["id"]).execute()
+
+    send_welcome_email(data.name, invite["invited_email"], company_name)
+
+    return {"message": "Account created successfully. Please login."}
+
+
+@app.get("/team/members", summary="List all HR team members in the same company")
+def list_team_members(hr=Depends(get_current_hr)):
+    """Returns all HR users in the same company."""
+    company_id = hr.get("company_id")
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Your account is not linked to a company.")
+
+    res = supabase.table("hr_users")\
+        .select("id, name, email, role, created_at")\
+        .eq("company_id", company_id)\
+        .order("created_at")\
+        .execute()
+
+    return res.data or []
+
+
+@app.get("/team/invites", summary="List pending invites (admin only)")
+def list_invites(hr=Depends(get_current_hr)):
+    """Returns all pending invites for this company."""
+    if hr.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view invites.")
+
+    company_id = hr.get("company_id")
+    res = supabase.table("team_invites")\
+        .select("id, invited_email, status, created_at, expires_at")\
+        .eq("company_id", company_id)\
+        .order("created_at", desc=True)\
+        .execute()
+
+    return res.data or []
+
+
+@app.delete("/team/members/{member_id}", summary="Remove a team member (admin only)")
+def remove_team_member(member_id: str, hr=Depends(get_current_hr)):
+    """Removes a member from the team. Admins cannot remove themselves."""
+    if hr.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can remove team members.")
+
+    if hr["sub"] == member_id:
+        raise HTTPException(status_code=400, detail="You cannot remove yourself.")
+
+    company_id = hr.get("company_id")
+
+    # Verify member belongs to same company
+    member_res = supabase.table("hr_users")\
+        .select("id, company_id, role")\
+        .eq("id", member_id)\
+        .execute()
+
+    if not member_res.data:
+        raise HTTPException(status_code=404, detail="Member not found.")
+
+    if str(member_res.data[0].get("company_id")) != str(company_id):
+        raise HTTPException(status_code=403, detail="This member does not belong to your company.")
+
+    supabase.table("hr_users").delete().eq("id", member_id).execute()
+    return {"message": "Member removed successfully."}
+
+
+@app.patch("/team/members/{member_id}/role", summary="Change a member's role (admin only)")
+def update_member_role(member_id: str, data: UpdateMemberRoleRequest, hr=Depends(get_current_hr)):
+    """Promotes or demotes a team member. Only admins can do this."""
+    if hr.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can change roles.")
+
+    if data.role not in ("admin", "member"):
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'member'.")
+
+    company_id = hr.get("company_id")
+    member_res = supabase.table("hr_users").select("company_id").eq("id", member_id).execute()
+    if not member_res.data or str(member_res.data[0].get("company_id")) != str(company_id):
+        raise HTTPException(status_code=404, detail="Member not found in your company.")
+
+    supabase.table("hr_users").update({"role": data.role}).eq("id", member_id).execute()
+    return {"message": f"Role updated to {data.role}."}
+
+
+def _send_team_invite_email(to_email: str, inviter_name: str, company_name: str, invite_token: str):
+    """Sends a team invite email with a signup link."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return
+    try:
+        # The frontend accept-invite page
+        invite_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:5500/frontend')}/accept-invite.html?token={invite_token}"
+        subject = f"You're invited to join {company_name} on CorpoCalm Gateway"
+        body = f"""
+        <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:24px;color:white;text-align:center;">
+                <h2 style="margin:0;">CorpoCalm Gateway</h2>
+                <p style="margin:4px 0 0;opacity:0.85;font-size:13px;">Team Invitation</p>
+            </div>
+            <div style="padding:28px 24px;">
+                <p>Hello,</p>
+                <p style="margin-top:12px;"><strong>{inviter_name}</strong> has invited you to join <strong>{company_name}</strong> on CorpoCalm Gateway as an HR team member.</p>
+                <div style="text-align:center;margin-top:24px;">
+                    <a href="{invite_link}" style="background:#1a237e;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;">Accept Invitation</a>
+                </div>
+                <p style="margin-top:20px;font-size:13px;color:#888;">This link expires in 7 days. If you did not expect this, ignore this email.</p>
+            </div>
+            <div style="background:#f5f5f5;padding:14px;text-align:center;font-size:11px;color:#aaa;">
+                CorpoCalm Gateway &nbsp;|&nbsp; Built by Priti Ganesh Lande
+            </div>
+        </div>"""
+        _send_email(to_email, subject, body)
+    except Exception as e:
+        print(f"[Email Warning] Team invite email failed: {e}")
 
 
 # ──────────────────────────────────────────
@@ -523,6 +862,186 @@ Return ONLY the 5 questions, one per line, nothing else."""
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 
+@app.post("/generate-description", summary="AI writes a job description")
+def generate_description(data: GenerateDescriptionRequest, hr=Depends(get_current_hr)):
+    """Uses Groq LLaMA 3 to write a professional job description based on the job title and details."""
+    if not groq_client:
+        raise HTTPException(status_code=503, detail="AI not configured. Please add GROQ_API_KEY to .env")
+
+    try:
+        details = []
+        if data.skills_required:      details.append(f"Skills: {data.skills_required}")
+        if data.job_type:             details.append(f"Job Type: {data.job_type}")
+        if data.experience_required:  details.append(f"Experience: {data.experience_required}")
+        if data.location:             details.append(f"Location: {data.location}")
+        details_text = "\n".join(details) if details else "No additional details provided."
+
+        prompt = f"""You are an expert HR professional and technical recruiter.
+
+Write a concise, professional job description for the following role.
+
+Job Title: {data.role_title}
+{details_text}
+
+Requirements:
+- 3 to 5 sentences maximum
+- Describe what the role involves and what the team does
+- Mention key responsibilities naturally
+- Sound professional but approachable
+- Do NOT use bullet points or headers
+- Do NOT include salary or application instructions
+- Plain paragraph text only
+
+Return ONLY the job description text, nothing else."""
+
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=300
+        )
+
+        description = response.choices[0].message.content.strip()
+
+        if not description:
+            raise HTTPException(status_code=500, detail="AI returned empty response.")
+
+        return {"description": description}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+
+
+@app.post("/generate-skills", summary="AI suggests required skills for a job role")
+def generate_skills(data: GenerateSkillsRequest, hr=Depends(get_current_hr)):
+    """Uses Groq LLaMA 3 to suggest a comma-separated list of required skills."""
+    if not groq_client:
+        raise HTTPException(status_code=503, detail="AI not configured. Please add GROQ_API_KEY to .env")
+
+    try:
+        details = []
+        if data.job_type:            details.append(f"Job Type: {data.job_type}")
+        if data.experience_required: details.append(f"Experience: {data.experience_required}")
+        if data.description:         details.append(f"Description: {data.description}")
+        details_text = "\n".join(details) if details else ""
+
+        prompt = f"""You are a senior technical recruiter with deep knowledge of tech stacks.
+
+Suggest the most relevant required skills for the following job role.
+
+Job Title: {data.role_title}
+{details_text}
+
+Rules:
+- Return 6 to 10 skills
+- Mix of technical and soft skills relevant to the role
+- Each skill is a short phrase (1-3 words max)
+- Comma-separated on a single line
+- No numbering, no bullets, no explanation
+- Example format: Python, FastAPI, PostgreSQL, Docker, REST APIs, Problem Solving
+
+Return ONLY the comma-separated skills list, nothing else."""
+
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=150
+        )
+
+        skills = response.choices[0].message.content.strip()
+
+        # Clean up any accidental newlines or extra spaces
+        skills = ", ".join([s.strip() for s in skills.replace("\n", ",").split(",") if s.strip()])
+
+        if not skills:
+            raise HTTPException(status_code=500, detail="AI returned empty response.")
+
+        return {"skills": skills}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+
+
+@app.post("/generate-full-job", summary="AI generates entire job posting from just a title")
+def generate_full_job(data: GenerateFullJobRequest, hr=Depends(get_current_hr)):
+    """
+    Single call that generates description, skills, questions,
+    time limit, passing score, job type, experience and salary range
+    — all from just a job title.
+    """
+    if not groq_client:
+        raise HTTPException(status_code=503, detail="AI not configured. Please add GROQ_API_KEY to .env")
+
+    try:
+        prompt = f"""You are a senior HR professional and technical recruiter.
+
+Generate a complete job posting for the role below. Return ONLY valid JSON — no markdown, no explanation.
+
+Job Title: {data.role_title}
+
+Return exactly this JSON structure:
+{{
+  "description": "3-5 sentence professional job description as plain text",
+  "skills_required": "comma-separated list of 6-10 relevant skills",
+  "questions": ["question 1", "question 2", "question 3", "question 4", "question 5"],
+  "job_type": "one of: Full-Time, Part-Time, Contract, Internship",
+  "experience_required": "e.g. 2-4 years",
+  "salary_range": "e.g. 8-12 LPA",
+  "time_limit_minutes": 25,
+  "passing_threshold": 65
+}}
+
+Rules:
+- questions: exactly 5, practical screening questions, mix of conceptual and applied
+- time_limit_minutes: integer between 15 and 45 based on complexity
+- passing_threshold: integer between 55 and 75
+- salary_range: realistic for Indian market in LPA
+- No markdown, no code blocks, return raw JSON only"""
+
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+            max_tokens=900
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        # Strip markdown code blocks if model wrapped the JSON
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        content = content.strip()
+
+        result = json.loads(content)
+
+        # Validate required keys are present
+        required = ["description", "skills_required", "questions", "job_type",
+                    "experience_required", "salary_range", "time_limit_minutes", "passing_threshold"]
+        for key in required:
+            if key not in result:
+                raise ValueError(f"AI response missing field: {key}")
+
+        # Ensure questions is a list of strings
+        if not isinstance(result["questions"], list):
+            result["questions"] = []
+
+        return result
+
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"AI returned invalid data: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+
+
 @app.post("/jobs", summary="Create a job posting (HR login required)")
 def create_job(job: JobCreate, hr=Depends(get_current_hr)):
     """Creates a new job and its screening questions. Requires HR login token."""
@@ -530,6 +1049,8 @@ def create_job(job: JobCreate, hr=Depends(get_current_hr)):
         raise HTTPException(status_code=400, detail="At least one question is required")
 
     job_res = supabase.table("jobs").insert({
+        "company_id": hr.get("company_id") or None,
+        "status": "published",
         "role_title": job.role_title,
         "time_limit_minutes": job.time_limit_minutes,
         "passing_threshold": job.passing_threshold,
@@ -558,6 +1079,90 @@ def create_job(job: JobCreate, hr=Depends(get_current_hr)):
         "role_title": job.role_title,
         "question_count": len(q_payload)
     }
+
+
+@app.post("/jobs/draft", summary="Save a job as draft (HR login required)")
+def save_draft(job: JobCreate, hr=Depends(get_current_hr)):
+    """Saves a job as a draft — not visible to candidates yet. Questions optional."""
+
+    job_res = supabase.table("jobs").insert({
+        "company_id": hr.get("company_id") or None,
+        "status": "draft",
+        "role_title": job.role_title or "Untitled Draft",
+        "time_limit_minutes": job.time_limit_minutes,
+        "passing_threshold": job.passing_threshold,
+        "description": job.description,
+        "skills_required": job.skills_required,
+        "location": job.location,
+        "job_type": job.job_type,
+        "salary_range": job.salary_range,
+        "experience_required": job.experience_required,
+        "expiry_date": job.expiry_date
+    }).execute()
+
+    if not job_res.data:
+        raise HTTPException(status_code=500, detail="Failed to save draft")
+
+    new_job_id = job_res.data[0]["id"]
+
+    # Save questions if provided
+    if job.questions:
+        q_payload = [
+            {"job_id": new_job_id, "question_text": q.strip()}
+            for q in job.questions if q.strip()
+        ]
+        if q_payload:
+            supabase.table("screening_questions").insert(q_payload).execute()
+
+    return {
+        "job_id": new_job_id,
+        "role_title": job.role_title or "Untitled Draft",
+        "status": "draft"
+    }
+
+
+@app.patch("/jobs/{job_id}/publish", summary="Publish a draft job (HR login required)")
+def publish_draft(job_id: str, hr=Depends(get_current_hr)):
+    """Publishes an existing draft job, making it visible to candidates."""
+    job_res = supabase.table("jobs").select("id, status, company_id").eq("id", job_id).execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = job_res.data[0]
+    if job.get("status") == "published":
+        raise HTTPException(status_code=400, detail="Job is already published.")
+
+    # Verify questions exist
+    q_res = supabase.table("screening_questions").select("id").eq("job_id", job_id).execute()
+    if not q_res.data:
+        raise HTTPException(status_code=400, detail="Add at least one screening question before publishing.")
+
+    supabase.table("jobs").update({"status": "published"}).eq("id", job_id).execute()
+    return {"job_id": job_id, "status": "published"}
+
+
+@app.get("/jobs/drafts", summary="List all draft jobs for this HR's company")
+def list_drafts(hr=Depends(get_current_hr)):
+    """Returns all draft jobs scoped to the HR's company."""
+    company_id = hr.get("company_id")
+    query = supabase.table("jobs").select("id, role_title, location, job_type, created_at, status")\
+        .eq("status", "draft")
+    if company_id:
+        query = query.eq("company_id", company_id)
+    res = query.order("created_at", desc=True).execute()
+    return res.data or []
+
+
+@app.delete("/jobs/{job_id}/draft", summary="Delete a draft job")
+def delete_draft(job_id: str, hr=Depends(get_current_hr)):
+    """Deletes a draft job. Cannot delete published jobs this way."""
+    job_res = supabase.table("jobs").select("id, status").eq("id", job_id).execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job_res.data[0].get("status") != "draft":
+        raise HTTPException(status_code=400, detail="Only draft jobs can be deleted this way.")
+    supabase.table("jobs").delete().eq("id", job_id).execute()
+    return {"message": "Draft deleted."}
 
 
 @app.get("/jobs/{job_id}", summary="Get job info and questions (for candidate page)")
@@ -618,7 +1223,7 @@ def submit_application(app_data: ApplicationCreate):
     attempt_number = attempt_count + 1
 
     # Score the answers
-    ai_score = compute_ai_score(app_data.answers)
+    ai_score, ai_feedback = compute_ai_score(app_data.answers)
     status = determine_status(ai_score, passing_threshold)
 
     # Save application
@@ -628,9 +1233,12 @@ def submit_application(app_data: ApplicationCreate):
         "candidate_email": app_data.candidate_email,
         "tab_switch_count": app_data.tab_switch_count,
         "ai_score": ai_score,
+        "ai_feedback": ai_feedback or None,
         "status": status,
         "submit_time": datetime.utcnow().isoformat(),
-        "attempt_number": attempt_number
+        "attempt_number": attempt_number,
+        "github_url": app_data.github_url or None,
+        "portfolio_url": app_data.portfolio_url or None
     }).execute()
 
     if not app_res.data:
@@ -665,7 +1273,9 @@ def submit_application(app_data: ApplicationCreate):
     send_candidate_confirmation(
         candidate_name=app_data.candidate_name,
         candidate_email=app_data.candidate_email,
-        role_title=role_title
+        role_title=role_title,
+        ai_score=ai_score,
+        status=status
     )
 
     return {
@@ -851,6 +1461,16 @@ def update_hr_status(application_id: str, data: HRStatusUpdate, hr=Depends(get_c
         job_res = supabase.table("jobs").select("role_title").eq("id", app_info.get("job_id","")).execute()
         role_title = job_res.data[0]["role_title"] if job_res.data else "the position"
         send_shortlisted_email(
+            candidate_name=app_info.get("candidate_name", "Candidate"),
+            candidate_email=app_info.get("candidate_email", ""),
+            role_title=role_title
+        )
+
+    if data.hr_status == "Rejected":
+        app_info = res.data[0]
+        job_res = supabase.table("jobs").select("role_title").eq("id", app_info.get("job_id","")).execute()
+        role_title = job_res.data[0]["role_title"] if job_res.data else "the position"
+        send_rejected_email(
             candidate_name=app_info.get("candidate_name", "Candidate"),
             candidate_email=app_info.get("candidate_email", ""),
             role_title=role_title

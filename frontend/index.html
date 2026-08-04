@@ -43,6 +43,20 @@
             <input type="text" id="name" placeholder="Full Name *">
             <input type="email" id="email" placeholder="Email Address *">
 
+            <!-- Portfolio / GitHub links -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div style="position:relative;">
+                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;">🐙</span>
+                    <input type="url" id="githubUrl" placeholder="GitHub URL (optional)"
+                        style="padding-left:34px;margin-bottom:0;">
+                </div>
+                <div style="position:relative;">
+                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;">🌐</span>
+                    <input type="url" id="portfolioUrl" placeholder="Portfolio URL (optional)"
+                        style="padding-left:34px;margin-bottom:0;">
+                </div>
+            </div>
+
             <div id="questionsContainer"></div>
 
             <!-- Resume Upload -->
@@ -223,7 +237,9 @@
                 candidate_name: name || 'Anonymous',
                 candidate_email: email || 'unknown@unknown.com',
                 tab_switch_count: tabSwitchCount,
-                answers: answers
+                answers: answers,
+                github_url:    document.getElementById('githubUrl').value.trim() || null,
+                portfolio_url: document.getElementById('portfolioUrl').value.trim() || null
             };
 
             try {

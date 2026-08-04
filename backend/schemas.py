@@ -8,10 +8,10 @@ from datetime import datetime
 # 1. JOBS
 # ==========================================
 class JobCreate(BaseModel):
-    role_title: str = Field(..., min_length=2, max_length=255, description="Title of the job role")
+    role_title: str = Field("", max_length=255, description="Title of the job role")
     time_limit_minutes: Optional[int] = Field(15, ge=1, description="Test time limit in minutes")
     passing_threshold: Optional[int] = Field(70, ge=0, le=100, description="Passing percentage threshold")
-    questions: List[str] = Field(..., min_items=1, description="List of screening questions")
+    questions: Optional[List[str]] = Field(default_factory=list, description="List of screening questions")
     # Job portal display fields (all optional)
     description: Optional[str] = Field(None, description="Full job description")
     skills_required: Optional[str] = Field(None, description="Comma-separated skills")
@@ -81,6 +81,8 @@ class ApplicationCreate(BaseModel):
     candidate_email: EmailStr = Field(..., description="Email address (validated format)")
     tab_switch_count: int = Field(0, ge=0, description="Anti-cheat: number of tab switches detected")
     answers: List[AnswerSubmit] = Field(default_factory=list, description="List of answers")
+    github_url: Optional[str] = Field(None, description="GitHub profile URL")
+    portfolio_url: Optional[str] = Field(None, description="Portfolio or personal website URL")
 
 
 class ApplicationResponse(BaseModel):

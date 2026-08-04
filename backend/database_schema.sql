@@ -3,18 +3,48 @@
 -- Run this in Supabase SQL Editor (Dashboard > SQL Editor)
 -- ============================================================
 
--- Step 0: HR Users Table (login/signup)
+-- Step 0a: Companies Table
+CREATE TABLE IF NOT EXISTS companies (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         VARCHAR(255) NOT NULL,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Step 0b: HR Users Table (login/signup)
+-- role: 'admin' = company owner, 'member' = invited team member
 CREATE TABLE IF NOT EXISTS hr_users (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name           VARCHAR(255) NOT NULL,
     email          VARCHAR(255) UNIQUE NOT NULL,
     password_hash  TEXT NOT NULL,
+    company_id     UUID REFERENCES companies(id) ON DELETE SET NULL,
+    company_name   VARCHAR(255),
+    role           VARCHAR(50) NOT NULL DEFAULT 'admin',
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Step 0c: Team Invites Table (pending invitations)
+CREATE TABLE IF NOT EXISTS team_invites (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id     UUID REFERENCES companies(id) ON DELETE CASCADE,
+    invited_email  VARCHAR(255) NOT NULL,
+    invited_by     UUID REFERENCES hr_users(id) ON DELETE SET NULL,
+    token          VARCHAR(255) UNIQUE NOT NULL,
+    status         VARCHAR(50) NOT NULL DEFAULT 'pending',  -- pending / accepted
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at     TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '7 days')
+);
+
+-- ── Migration: add company_id + role to existing hr_users ──
+-- ALTER TABLE hr_users ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;
+-- ALTER TABLE hr_users ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'admin';
+-- ALTER TABLE hr_users ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);
 
 -- Step 1: Jobs Table (includes job portal display fields)
 CREATE TABLE IF NOT EXISTS jobs (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id           UUID REFERENCES companies(id) ON DELETE SET NULL,
+    status               VARCHAR(20) NOT NULL DEFAULT 'published',  -- 'draft' or 'published'
     role_title           VARCHAR(255) NOT NULL,
     time_limit_minutes   INT NOT NULL DEFAULT 15,
     passing_threshold    INT NOT NULL DEFAULT 70,
@@ -73,4 +103,28 @@ CREATE TABLE IF NOT EXISTS answers (
 -- ALTER TABLE jobs ADD COLUMN IF NOT EXISTS experience_required VARCHAR(100);
 -- ALTER TABLE applications ADD COLUMN IF NOT EXISTS candidate_name VARCHAR(255) NOT NULL DEFAULT '';
 -- ALTER TABLE applications DROP COLUMN IF EXISTS feedback;
+-- ALTER TABLE applications ADD COLUMN IF NOT EXISTS github_url TEXT;
+-- ALTER TABLE applications ADD COLUMN IF NOT EXISTS portfolio_url TEXT;
+-- ALTER TABLE applications ADD COLUMN IF NOT EXISTS ai_feedback TEXT;
+-- ============================================================
+
+-- ============================================================
+-- Migration 002: Multi-HR Team Support
+-- Run these if you already have the tables above:
+-- ============================================================
+-- ALTER TABLE hr_users ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;
+-- ALTER TABLE hr_users ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'admin';
+-- ALTER TABLE hr_users ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);
+-- ALTER TABLE jobs ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;
+-- ALTER TABLE jobs ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'published';
+-- CREATE TABLE IF NOT EXISTS team_invites (
+--     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     company_id     UUID REFERENCES companies(id) ON DELETE CASCADE,
+--     invited_email  VARCHAR(255) NOT NULL,
+--     invited_by     UUID REFERENCES hr_users(id) ON DELETE SET NULL,
+--     token          VARCHAR(255) UNIQUE NOT NULL,
+--     status         VARCHAR(50) NOT NULL DEFAULT 'pending',
+--     created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+--     expires_at     TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '7 days')
+-- );
 -- ============================================================

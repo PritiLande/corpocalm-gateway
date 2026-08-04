@@ -22,6 +22,21 @@
         button.primary { width: 100%; padding: 14px; background: #1a237e; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: background 0.2s; }
         button.primary:hover { background: #283593; }
         button.primary:disabled { background: #aaa; cursor: not-allowed; }
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+        button.draft-btn { width: 100%; padding: 14px; background: white; color: #555; border: 2px solid #ddd; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        button.draft-btn:hover { border-color: #1a237e; color: #1a237e; background: #f0f4ff; }
+        button.draft-btn:disabled { background: #f5f5f5; color: #aaa; border-color: #e0e0e0; cursor: not-allowed; }
+        .draft-item { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #f0f0f0; }
+        .draft-item:last-child { border-bottom: none; }
+        .draft-badge { font-size:11px; padding:2px 8px; border-radius:10px; background:#fff8e1; color:#f57f17; border:1px solid #ffe082; font-weight:600; }
+        .draft-actions { display:flex; gap:8px; }
+        .draft-actions button { padding:5px 12px; border-radius:5px; font-size:12px; font-weight:600; cursor:pointer; border:none; }
+        .btn-load { background:#e8eaf6; color:#1a237e; }
+        .btn-load:hover { background:#c5cae9; }
+        .btn-pub { background:#1a237e; color:white; }
+        .btn-pub:hover { background:#283593; }
+        .btn-del { background:#ffebee; color:#c62828; }
+        .btn-del:hover { background:#ffcdd2; }
         .result-box { margin-top: 20px; padding: 18px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; display: none; font-size: 14px; line-height: 1.8; }
         .error-box { margin-top: 20px; padding: 14px; background: #ffebee; border: 1px solid #ef9a9a; border-radius: 8px; display: none; font-size: 14px; }
         .link-box { background: #f5f5f5; padding: 10px 12px; border-radius: 6px; font-family: monospace; font-size: 13px; word-break: break-all; margin: 8px 0; border: 1px solid #e0e0e0; }
@@ -32,6 +47,13 @@
         .ai-btn:hover { background: #7b1fa2; }
         .ai-btn:disabled { background: #aaa; cursor: not-allowed; }
         .ai-generating { background: #f3e5f5; border: 1px solid #ce93d8; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #6a1b9a; margin-bottom: 10px; display: none; }
+        /* One-click AI job generator */
+        .magic-btn { width: 100%; padding: 13px; background: linear-gradient(135deg, #6a1b9a, #1a237e); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 20px; letter-spacing: 0.3px; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .magic-btn:hover { opacity: 0.9; }
+        .magic-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .magic-progress { background: linear-gradient(135deg, #f3e5f5, #e8eaf6); border: 1px solid #ce93d8; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; display: none; font-size: 13px; color: #4a148c; }
+        .magic-progress .step { margin: 4px 0; opacity: 0.5; }
+        .magic-progress .step.active { opacity: 1; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -51,6 +73,17 @@
     <div class="section-title">Job Information</div>
     <label>Job Title *</label>
     <input type="text" id="role" placeholder="e.g. Senior Backend Engineer" oninput="saveField(this)">
+
+    <!-- One-Click AI Generator -->
+    <button class="magic-btn" id="magicBtn" onclick="generateFullJob()">
+        ✨ Generate Full Job with AI
+    </button>
+    <div class="magic-progress" id="magicProgress">
+        <div class="step" id="step1">⏳ Writing job description...</div>
+        <div class="step" id="step2">⏳ Suggesting required skills...</div>
+        <div class="step" id="step3">⏳ Generating screening questions...</div>
+        <div class="step" id="step4">⏳ Setting time limit &amp; pass score...</div>
+    </div>
 
     <div class="row">
         <div>
@@ -82,9 +115,17 @@
     </div>
 
     <label>Job Description</label>
+    <button class="ai-btn" id="aiDescBtn" onclick="generateDescriptionAI()" style="margin-bottom:8px;">
+        &#10024; Write Description with AI
+    </button>
+    <div class="ai-generating" id="aiDescGenerating">AI is writing the job description...</div>
     <textarea id="description" rows="4" placeholder="Describe the role and responsibilities..." oninput="saveField(this)"></textarea>
 
     <label>Skills Required</label>
+    <button class="ai-btn" id="aiSkillsBtn" onclick="generateSkillsAI()" style="margin-bottom:8px;">
+        &#10024; Suggest Skills with AI
+    </button>
+    <div class="ai-generating" id="aiSkillsGenerating">AI is suggesting skills...</div>
     <input type="text" id="skills" placeholder="e.g. Python, FastAPI, PostgreSQL, Docker" oninput="saveField(this)">
     <p class="hint">Comma-separated list of skills.</p>
 
@@ -116,10 +157,46 @@
     <textarea id="questions" rows="5" placeholder="One question per line. e.g.&#10;What programming languages do you know?&#10;What is a database and why do we use it?" oninput="saveField(this)"></textarea>
     <p class="hint">Each line = one question. Or click the AI button above to auto-generate.</p>
 
-    <button class="primary" id="publishBtn" onclick="publishJob()">Publish Job</button>
+    <div class="btn-row">
+        <button class="draft-btn" id="draftBtn" onclick="saveDraft()">💾 Save as Draft</button>
+        <button class="primary" id="publishBtn" onclick="publishJob()">Publish Job</button>
+    </div>
 
     <div class="result-box" id="resultBox"></div>
     <div class="error-box" id="errorBox"></div>
+</div>
+
+<!-- ── Drafts Card ── -->
+<div class="card" style="margin-top:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h1 style="font-size:18px;margin:0;">📝 Saved Drafts</h1>
+        <button onclick="loadDrafts()" style="background:none;border:none;color:#1a237e;font-size:13px;cursor:pointer;font-weight:600;">↻ Refresh</button>
+    </div>
+    <div id="draftsList" style="margin-top:16px;font-size:14px;color:#555;">Loading drafts...</div>
+</div>
+
+<!-- ── Team Members Card ── -->
+<div class="card" id="teamCard" style="margin-top:24px;display:none;">
+    <h1 style="font-size:18px;">👥 Team Members</h1>
+    <p style="font-size:13px;color:#666;margin-bottom:20px;">Manage your HR team. Members can publish jobs and view applications.</p>
+
+    <!-- Invite form (admin only) -->
+    <div id="inviteSection">
+        <div style="display:flex;gap:10px;align-items:flex-end;">
+            <div style="flex:1;">
+                <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:5px;">Invite by Email</label>
+                <input type="email" id="inviteEmail" placeholder="colleague@company.com" style="margin-bottom:0;">
+            </div>
+            <button onclick="inviteMember()" id="inviteBtn" style="padding:10px 18px;background:#1a237e;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Send Invite</button>
+        </div>
+        <div class="msg" id="inviteMsg" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">Current Members</div>
+    <div id="membersList" style="font-size:14px;color:#555;">Loading...</div>
+
+    <div class="section-title" id="pendingInvitesTitle" style="display:none;">Pending Invites</div>
+    <div id="pendingInvitesList" style="font-size:13px;color:#777;"></div>
 </div>
 
 <script src="config.js"></script>
@@ -127,6 +204,7 @@
     const PORTAL_BASE  = window.location.href.replace('admin.html', '');
     const SAVE_FIELDS  = ['role','location','jobType','salary','experience','description','skills','questions','time','threshold','expiryDate'];
     const token        = localStorage.getItem('hr_token');
+    const hrRole       = localStorage.getItem('hr_role') || 'admin';
 
     // ── Auth check — redirect to login if not logged in ──
     if (!token) window.location.href = 'login.html';
@@ -140,6 +218,16 @@
             const saved = localStorage.getItem('cc_' + id);
             if (saved) document.getElementById(id).value = saved;
         });
+
+        // Show team card and load team data
+        document.getElementById('teamCard').style.display = 'block';
+        // Hide invite section for non-admins
+        if (hrRole !== 'admin') {
+            document.getElementById('inviteSection').style.display = 'none';
+        }
+        loadTeamMembers();
+        if (hrRole === 'admin') loadPendingInvites();
+        loadDrafts();
     });
 
     function saveField(el) {
@@ -189,6 +277,182 @@
 
         } catch (err) {
             showError('AI generation failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            notice.style.display = 'none';
+        }
+    }
+
+    // ── ONE-CLICK AI Job Generator ──
+    async function generateFullJob() {
+        const role = document.getElementById('role').value.trim();
+        if (!role) {
+            showError('Please enter a Job Title first.');
+            document.getElementById('role').focus();
+            return;
+        }
+
+        const btn      = document.getElementById('magicBtn');
+        const progress = document.getElementById('magicProgress');
+        const steps    = ['step1','step2','step3','step4'];
+
+        btn.disabled = true;
+        btn.textContent = '✨ AI is building your job...';
+        progress.style.display = 'block';
+        document.getElementById('errorBox').style.display = 'none';
+        document.getElementById('resultBox').style.display = 'none';
+
+        // Animate steps
+        let stepIndex = 0;
+        const stepTimer = setInterval(() => {
+            steps.forEach((s, i) => {
+                const el = document.getElementById(s);
+                el.classList.toggle('active', i === stepIndex);
+                if (i < stepIndex) el.textContent = el.textContent.replace('⏳', '✅');
+            });
+            stepIndex = Math.min(stepIndex + 1, steps.length - 1);
+        }, 900);
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/generate-full-job`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ role_title: role })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'AI generation failed');
+
+            // Fill all fields
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (el && val !== undefined && val !== null) {
+                    el.value = val;
+                    localStorage.setItem('cc_' + id, val);
+                }
+            };
+
+            setVal('description', data.description);
+            setVal('skills',      data.skills_required);
+            setVal('time',        data.time_limit_minutes);
+            setVal('threshold',   data.passing_threshold);
+            setVal('experience',  data.experience_required);
+            setVal('salary',      data.salary_range);
+
+            if (data.job_type) {
+                document.getElementById('jobType').value = data.job_type;
+                localStorage.setItem('cc_jobType', data.job_type);
+            }
+
+            if (data.questions && data.questions.length) {
+                const qText = data.questions.join('\n');
+                setVal('questions', qText);
+            }
+
+            // Mark all steps done
+            clearInterval(stepTimer);
+            steps.forEach(s => {
+                const el = document.getElementById(s);
+                el.classList.remove('active');
+                el.textContent = el.textContent.replace('⏳', '✅');
+            });
+
+            // Show success note
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `<strong>✨ AI has filled in the full job!</strong> Review and edit anything below, then hit <strong>Publish Job</strong> or <strong>Save as Draft</strong>.`;
+            resultBox.style.display = 'block';
+
+            setTimeout(() => { progress.style.display = 'none'; }, 1500);
+
+        } catch (err) {
+            clearInterval(stepTimer);
+            progress.style.display = 'none';
+            showError('AI generation failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '✨ Generate Full Job with AI';
+        }
+    }
+
+    // ── AI Description Generator ──
+    async function generateDescriptionAI() {
+        const role = document.getElementById('role').value.trim();
+        if (!role) {
+            showError('Please enter a Job Title first so AI knows what to write.');
+            return;
+        }
+
+        const btn    = document.getElementById('aiDescBtn');
+        const notice = document.getElementById('aiDescGenerating');
+        btn.disabled = true;
+        notice.style.display = 'block';
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/generate-description`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    role_title:           role,
+                    skills_required:      document.getElementById('skills').value.trim() || null,
+                    job_type:             document.getElementById('jobType').value || null,
+                    experience_required:  document.getElementById('experience').value.trim() || null,
+                    location:             document.getElementById('location').value.trim() || null,
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'AI generation failed');
+            }
+
+            const data = await res.json();
+            document.getElementById('description').value = data.description;
+            localStorage.setItem('cc_description', data.description);
+
+        } catch (err) {
+            showError('AI description failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            notice.style.display = 'none';
+        }
+    }
+
+    // ── AI Skills Suggester ──
+    async function generateSkillsAI() {
+        const role = document.getElementById('role').value.trim();
+        if (!role) {
+            showError('Please enter a Job Title first so AI knows what skills to suggest.');
+            return;
+        }
+
+        const btn    = document.getElementById('aiSkillsBtn');
+        const notice = document.getElementById('aiSkillsGenerating');
+        btn.disabled = true;
+        notice.style.display = 'block';
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/generate-skills`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    role_title:           role,
+                    job_type:             document.getElementById('jobType').value || null,
+                    experience_required:  document.getElementById('experience').value.trim() || null,
+                    description:          document.getElementById('description').value.trim() || null,
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'AI generation failed');
+            }
+
+            const data = await res.json();
+            document.getElementById('skills').value = data.skills;
+            localStorage.setItem('cc_skills', data.skills);
+
+        } catch (err) {
+            showError('AI skills suggestion failed: ' + err.message);
         } finally {
             btn.disabled = false;
             notice.style.display = 'none';
@@ -297,6 +561,269 @@
         const errorBox = document.getElementById('errorBox');
         errorBox.textContent = 'Error: ' + msg;
         errorBox.style.display = 'block';
+    }
+
+    // ── Draft Management ──
+
+    function collectFormData() {
+        const rawQ = document.getElementById('questions').value.trim();
+        const questions = rawQ ? rawQ.split('\n').map(q => q.trim()).filter(q => q.length > 0) : [];
+        return {
+            role_title:           document.getElementById('role').value.trim() || 'Untitled Draft',
+            time_limit_minutes:   parseInt(document.getElementById('time').value) || 15,
+            passing_threshold:    parseInt(document.getElementById('threshold').value) || 70,
+            questions,
+            location:             document.getElementById('location').value.trim() || null,
+            job_type:             document.getElementById('jobType').value || null,
+            salary_range:         document.getElementById('salary').value.trim() || null,
+            experience_required:  document.getElementById('experience').value.trim() || null,
+            description:          document.getElementById('description').value.trim() || null,
+            skills_required:      document.getElementById('skills').value.trim() || null,
+            expiry_date:          document.getElementById('expiryDate').value || null,
+        };
+    }
+
+    async function saveDraft() {
+        const draftBtn = document.getElementById('draftBtn');
+        draftBtn.disabled = true;
+        draftBtn.textContent = 'Saving...';
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/draft`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(collectFormData())
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to save draft');
+
+            // Show success in result box
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `<strong>Draft Saved!</strong> "${data.role_title}" has been saved as a draft. You can publish it anytime from the Drafts section below.`;
+            resultBox.style.display = 'block';
+            document.getElementById('errorBox').style.display = 'none';
+
+            loadDrafts(); // refresh drafts list
+        } catch (err) {
+            showError(err.message);
+        } finally {
+            draftBtn.disabled = false;
+            draftBtn.textContent = '💾 Save as Draft';
+        }
+    }
+
+    async function loadDrafts() {
+        const el = document.getElementById('draftsList');
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/drafts`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to load drafts');
+
+            if (!data.length) {
+                el.innerHTML = '<p style="color:#aaa;font-size:13px;">No drafts saved yet.</p>';
+                return;
+            }
+
+            el.innerHTML = data.map(d => `
+                <div class="draft-item">
+                    <div>
+                        <strong>${d.role_title}</strong>
+                        <span class="draft-badge" style="margin-left:8px;">Draft</span>
+                        <div style="font-size:12px;color:#aaa;margin-top:2px;">
+                            ${d.location ? d.location + ' · ' : ''}${d.job_type || ''}
+                            · Saved ${new Date(d.created_at).toLocaleDateString()}
+                        </div>
+                    </div>
+                    <div class="draft-actions">
+                        <button class="btn-load" onclick="loadDraftIntoForm('${d.id}')">Edit</button>
+                        <button class="btn-pub"  onclick="publishDraft('${d.id}', '${d.role_title.replace(/'/g,"\\'")}')">Publish</button>
+                        <button class="btn-del"  onclick="deleteDraft('${d.id}', '${d.role_title.replace(/'/g,"\\'")}')">Delete</button>
+                    </div>
+                </div>`).join('');
+        } catch (e) {
+            el.innerHTML = `<p style="color:#c62828;font-size:13px;">${e.message}</p>`;
+        }
+    }
+
+    async function publishDraft(jobId, title) {
+        if (!confirm(`Publish "${title}"? It will become visible to candidates.`)) return;
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/${jobId}/publish`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Publish failed');
+
+            const portalLink = `${PORTAL_BASE}job-portal.html?job=${jobId}`;
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `
+                <strong>Job Published!</strong><br><br>
+                <strong>Share this link with candidates:</strong>
+                <div class="link-box">${portalLink}</div>
+                <button class="copy-btn" onclick="copyLink('${portalLink}')">Copy Link</button>`;
+            resultBox.style.display = 'block';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            loadDrafts();
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function deleteDraft(jobId, title) {
+        if (!confirm(`Delete draft "${title}"? This cannot be undone.`)) return;
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/${jobId}/draft`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Delete failed');
+            loadDrafts();
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function loadDraftIntoForm(jobId) {
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/${jobId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Load failed');
+
+            const j = data.job;
+            const setVal = (id, val) => { if (document.getElementById(id)) document.getElementById(id).value = val || ''; };
+            setVal('role',        j.role_title);
+            setVal('location',    j.location);
+            setVal('salary',      j.salary_range);
+            setVal('experience',  j.experience_required);
+            setVal('description', j.description);
+            setVal('skills',      j.skills_required);
+            setVal('time',        j.time_limit_minutes);
+            setVal('threshold',   j.passing_threshold);
+            setVal('expiryDate',  j.expiry_date);
+            if (j.job_type) document.getElementById('jobType').value = j.job_type;
+
+            // Load questions
+            if (data.questions && data.questions.length) {
+                document.getElementById('questions').value = data.questions.map(q => q.question_text).join('\n');
+            }
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+            alert('Error loading draft: ' + e.message);
+        }
+    }
+
+    // ── Team Management ──
+
+    async function loadTeamMembers() {
+        const el = document.getElementById('membersList');
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/team/members`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to load members');
+
+            if (!data.length) { el.innerHTML = '<p style="color:#aaa;">No members yet.</p>'; return; }
+
+            el.innerHTML = data.map(m => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
+                    <div>
+                        <strong>${m.name}</strong>
+                        <span style="font-size:12px;color:#888;margin-left:8px;">${m.email}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:11px;padding:3px 8px;border-radius:12px;background:${m.role==='admin'?'#e8eaf6':'#f3e5f5'};color:${m.role==='admin'?'#1a237e':'#6a1b9a'};font-weight:600;">
+                            ${m.role}
+                        </span>
+                        ${hrRole === 'admin' && m.email !== localStorage.getItem('hr_email') ? `
+                        <button onclick="removeMember('${m.id}', '${m.name}')"
+                            style="background:none;border:1px solid #ef9a9a;color:#c62828;padding:3px 9px;border-radius:4px;font-size:12px;cursor:pointer;">
+                            Remove
+                        </button>` : ''}
+                    </div>
+                </div>`).join('');
+        } catch (e) {
+            el.innerHTML = `<p style="color:#c62828;">${e.message}</p>`;
+        }
+    }
+
+    async function loadPendingInvites() {
+        const titleEl = document.getElementById('pendingInvitesTitle');
+        const listEl  = document.getElementById('pendingInvitesList');
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/team/invites`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok || !data.length) return;
+
+            titleEl.style.display = 'block';
+            listEl.innerHTML = data.map(inv => `
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f5f5f5;">
+                    <span>${inv.invited_email}</span>
+                    <span style="font-size:11px;color:#ff8f00;font-weight:600;">Pending</span>
+                </div>`).join('');
+        } catch (e) { /* silently skip */ }
+    }
+
+    async function inviteMember() {
+        const emailVal = document.getElementById('inviteEmail').value.trim();
+        const btn      = document.getElementById('inviteBtn');
+        const msgEl    = document.getElementById('inviteMsg');
+
+        msgEl.style.display = 'none';
+        if (!emailVal) { showInviteMsg('Please enter an email address.', 'error'); return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/team/invite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ email: emailVal })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Invite failed');
+
+            showInviteMsg(`Invite sent to ${emailVal}`, 'success');
+            document.getElementById('inviteEmail').value = '';
+            loadPendingInvites();
+        } catch (e) {
+            showInviteMsg(e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Send Invite';
+        }
+    }
+
+    async function removeMember(memberId, memberName) {
+        if (!confirm(`Remove ${memberName} from the team?`)) return;
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/team/members/${memberId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Remove failed');
+            loadTeamMembers();
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    function showInviteMsg(text, type) {
+        const el = document.getElementById('inviteMsg');
+        el.textContent = text;
+        el.className = `msg ${type}`;
+        el.style.display = 'block';
     }
 </script>
 </body>

@@ -102,6 +102,9 @@
             localStorage.setItem('hr_token', data.token);
             localStorage.setItem('hr_name', data.name);
             localStorage.setItem('hr_company', data.company_name || '');
+            localStorage.setItem('hr_role', data.role || 'admin');
+            localStorage.setItem('hr_company_id', data.company_id || '');
+            localStorage.setItem('hr_email', data.email || '');
 
             showMsg('Login successful! Redirecting...', 'success');
             setTimeout(() => window.location.href = 'admin.html', 800);
