@@ -54,10 +54,13 @@ groq_client = Groq(
 ) if GROQ_API_KEY else None
 
 # ── Auth setup ──
-JWT_SECRET       = os.getenv("JWT_SECRET", "corpocalm_secret_jwt_key_2026")
+JWT_SECRET       = os.getenv("JWT_SECRET", "").strip()
 JWT_ALGORITHM    = "HS256"
 JWT_EXPIRY_HOURS = 24
 bearer_scheme    = HTTPBearer()
+
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET must be set in .env — application cannot start without it.")
 
 # ── Auth helpers ──
 def hash_password(password: str) -> str:
