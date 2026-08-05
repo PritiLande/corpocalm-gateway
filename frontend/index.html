@@ -21,6 +21,32 @@
         .progress-bar-wrap { background: #eee; border-radius: 4px; height: 6px; margin-bottom: 20px; }
         .progress-bar { height: 6px; background: #007bff; border-radius: 4px; transition: width 1s linear; }
         .retry-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 4px; font-size: 13px; margin-bottom: 10px; display: none; }
+
+        /* ── Camera proctoring ── */
+        #cameraWidget {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 180px; z-index: 999;
+            border-radius: 12px; overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            border: 3px solid #1a237e;
+            background: #000;
+            display: none;
+        }
+        #cameraWidget video { width: 100%; display: block; border-radius: 9px 9px 0 0; }
+        #cameraWidget .cam-bar {
+            background: #1a237e; color: white;
+            font-size: 11px; font-weight: 600;
+            padding: 5px 10px; display: flex;
+            align-items: center; justify-content: space-between;
+        }
+        #cameraWidget .cam-bar .cam-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #4caf50; display: inline-block;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        #cameraWidget .cam-warn { background: #ffebee; color: #c62828; font-size: 11px; padding: 4px 10px; font-weight: 600; display: none; text-align: center; }
+        .cam-denied-notice { background: #fff3e0; border: 1px solid #ffb74d; border-radius: 6px; padding: 10px 14px; font-size: 13px; color: #e65100; margin-bottom: 14px; display: none; }
     </style>
 </head>
 <body>
@@ -89,10 +115,25 @@
             <div id="timer">--:--</div>
             <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:100%"></div></div>
 
+            <!-- Camera denied notice (shown if candidate blocked camera) -->
+            <div class="cam-denied-notice" id="camDeniedNotice">
+                📷 Camera access was denied. This has been noted. Proctoring is inactive.
+            </div>
+
             <div id="questionsContainer"></div>
 
             <div class="retry-notice" id="retryNotice"></div>
             <button id="submitBtn" onclick="submitTest()">Submit Application</button>
+        </div>
+    </div>
+
+    <!-- Camera proctoring widget (fixed bottom-right during test) -->
+    <div id="cameraWidget">
+        <video id="proctoringVideo" autoplay muted playsinline></video>
+        <div class="cam-warn" id="camWarn">⚠️ Face not detected!</div>
+        <div class="cam-bar">
+            <span><span class="cam-dot"></span> Proctoring Active</span>
+            <span id="faceAwayBadge" style="font-size:10px;opacity:0.8;">Away: 0</span>
         </div>
     </div>
 
@@ -106,6 +147,72 @@
         let currentJobData = null;  // store job+questions until Begin Test
         let isSubmitting = false;
         let pendingResumeFile = null;
+
+        // ── Proctoring state ──
+        let cameraStream = null;
+        let faceAwayCount = 0;
+        let cameraDeclined = false;
+        let proctoringInterval = null;
+        let faceDetector = null;
+
+        // ── Start camera proctoring ──
+        async function startProctoring() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                const video = document.getElementById('proctoringVideo');
+                video.srcObject = cameraStream;
+
+                // Show the widget
+                document.getElementById('cameraWidget').style.display = 'block';
+
+                // Init FaceDetector if supported
+                if ('FaceDetector' in window) {
+                    faceDetector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+                }
+
+                // Check every 30 seconds
+                proctoringInterval = setInterval(checkFace, 30000);
+
+            } catch (err) {
+                // Camera denied or not available
+                cameraDeclined = true;
+                document.getElementById('camDeniedNotice').style.display = 'block';
+                console.warn('Camera access denied:', err);
+            }
+        }
+
+        // ── Face detection check ──
+        async function checkFace() {
+            if (!faceDetector || !cameraStream) return;
+            const video = document.getElementById('proctoringVideo');
+            try {
+                const faces = await faceDetector.detect(video);
+                const camWarn = document.getElementById('camWarn');
+                if (faces.length === 0) {
+                    faceAwayCount++;
+                    camWarn.style.display = 'block';
+                    document.getElementById('faceAwayBadge').textContent = `Away: ${faceAwayCount}`;
+                    // Flash border red
+                    const widget = document.getElementById('cameraWidget');
+                    widget.style.borderColor = '#c62828';
+                    setTimeout(() => { widget.style.borderColor = '#1a237e'; }, 3000);
+                } else {
+                    camWarn.style.display = 'none';
+                }
+            } catch (e) {
+                // FaceDetector failed silently
+            }
+        }
+
+        // ── Stop camera ──
+        function stopProctoring() {
+            if (proctoringInterval) clearInterval(proctoringInterval);
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(t => t.stop());
+                cameraStream = null;
+            }
+            document.getElementById('cameraWidget').style.display = 'none';
+        }
 
         // ── Anti-cheat: count tab switches ──
         document.addEventListener("visibilitychange", () => {
@@ -230,6 +337,9 @@
                     submitTest(true);
                 }
             }, 1000);
+
+            // Start camera proctoring
+            startProctoring();
         }
 
         function updateTimer() {
@@ -248,6 +358,7 @@
         async function submitTest(autoSubmit = false) {
             if (isSubmitting) return;
             clearInterval(interval);
+            stopProctoring(); // stop camera on submit
 
             const name = document.getElementById('name').value.trim();
             const email = document.getElementById('email').value.trim();
@@ -272,6 +383,8 @@
                 candidate_name: name || 'Anonymous',
                 candidate_email: email || 'unknown@unknown.com',
                 tab_switch_count: tabSwitchCount,
+                face_away_count: faceAwayCount,
+                camera_declined: cameraDeclined,
                 answers: answers,
                 github_url:    document.getElementById('githubUrl').value.trim() || null,
                 portfolio_url: document.getElementById('portfolioUrl').value.trim() || null

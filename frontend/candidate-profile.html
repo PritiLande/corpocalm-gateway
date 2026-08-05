@@ -184,6 +184,8 @@ function renderProfile(d) {
                             <div class="info-item"><div class="label">Job Role</div><div class="value">${esc(job.role_title||'—')}</div></div>
                             <div class="info-item"><div class="label">Location</div><div class="value">${esc(job.location||'—')}</div></div>
                             <div class="info-item"><div class="label">Tab Switches</div><div class="value">${a.tab_switch_count??0}${(a.tab_switch_count>2)?` <span style="color:#c62828;">&#9888;</span>`:''}</div></div>
+                            <div class="info-item"><div class="label">Face Away (Proctoring)</div><div class="value">${a.face_away_count??0}${(a.face_away_count>2)?` <span style="color:#c62828;">&#9888;</span>`:''}</div></div>
+                            <div class="info-item"><div class="label">Camera</div><div class="value">${a.camera_declined?'<span style="color:#e65100;">⚠️ Declined</span>':'<span style="color:#2e7d32;">✅ Active</span>'}</div></div>
                             <div class="info-item"><div class="label">Attempt #</div><div class="value">${a.attempt_number}</div></div>
                             <div class="info-item"><div class="label">Submitted</div><div class="value">${a.submit_time?new Date(a.submit_time).toLocaleString():new Date(a.created_at).toLocaleString()}</div></div>
                             <div class="info-item"><div class="label">Status</div><div class="value">${badgeHtml(a.status,a.hr_status)}</div></div>

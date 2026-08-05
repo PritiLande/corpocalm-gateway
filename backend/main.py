@@ -1232,6 +1232,8 @@ def submit_application(app_data: ApplicationCreate):
         "candidate_name": app_data.candidate_name,
         "candidate_email": app_data.candidate_email,
         "tab_switch_count": app_data.tab_switch_count,
+        "face_away_count": app_data.face_away_count,
+        "camera_declined": app_data.camera_declined,
         "ai_score": ai_score,
         "ai_feedback": ai_feedback or None,
         "status": status,

@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS answers (
 -- ALTER TABLE applications ADD COLUMN IF NOT EXISTS github_url TEXT;
 -- ALTER TABLE applications ADD COLUMN IF NOT EXISTS portfolio_url TEXT;
 -- ALTER TABLE applications ADD COLUMN IF NOT EXISTS ai_feedback TEXT;
+-- ALTER TABLE applications ADD COLUMN IF NOT EXISTS face_away_count INT DEFAULT 0;
+-- ALTER TABLE applications ADD COLUMN IF NOT EXISTS camera_declined BOOLEAN DEFAULT FALSE;
 -- ============================================================
 
 -- ============================================================

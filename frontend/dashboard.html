@@ -426,7 +426,7 @@
                 <td style="color:#64748b;">${app.candidate_email || 'N/A'}</td>
                 <td>${scoreDisplay}</td>
                 <td>${statusBadge}</td>
-                <td class="${tabCls}">${app.tab_switch_count ?? 0}${app.tab_switch_count > 2 ? ' ⚠️' : ''}</td>
+                <td class="${tabCls}">${app.tab_switch_count ?? 0}${app.tab_switch_count > 2 ? ' ⚠️' : ''} ${app.face_away_count > 0 ? `<br><span style="font-size:11px;color:#e65100;">📷 away: ${app.face_away_count}</span>` : ''} ${app.camera_declined ? `<br><span style="font-size:11px;color:#e65100;">📷 denied</span>` : ''}</td>
                 <td style="color:#64748b;font-size:12.5px;">${app.submit_time ? new Date(app.submit_time).toLocaleString() : new Date(app.created_at).toLocaleString()}</td>
                 <td>
                     <div class="action-btns">

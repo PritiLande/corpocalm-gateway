@@ -80,6 +80,8 @@ class ApplicationCreate(BaseModel):
     candidate_name: str = Field(..., min_length=2, max_length=255, description="Full name of the candidate")
     candidate_email: EmailStr = Field(..., description="Email address (validated format)")
     tab_switch_count: int = Field(0, ge=0, description="Anti-cheat: number of tab switches detected")
+    face_away_count: int = Field(0, ge=0, description="Proctoring: number of times face not detected")
+    camera_declined: bool = Field(False, description="Proctoring: whether candidate denied camera access")
     answers: List[AnswerSubmit] = Field(default_factory=list, description="List of answers")
     github_url: Optional[str] = Field(None, description="GitHub profile URL")
     portfolio_url: Optional[str] = Field(None, description="Portfolio or personal website URL")
