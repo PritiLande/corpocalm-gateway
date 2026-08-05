@@ -699,6 +699,116 @@ def hr_login(request: Request, data: HRLogin):
 
 
 # ──────────────────────────────────────────
+# FORGOT / RESET PASSWORD ENDPOINTS
+# ──────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(..., min_length=6, max_length=72)
+
+
+@app.post("/hr/forgot-password", summary="Request a password reset email")
+@limiter.limit("3/hour")
+def forgot_password(request: Request, data: ForgotPasswordRequest):
+    """
+    Generates a secure reset token and emails a reset link.
+    Always returns 200 regardless of whether the email exists
+    (prevents user enumeration).
+    """
+    hr_res = supabase.table("hr_users").select("id, name, email")\
+        .eq("email", data.email).execute()
+
+    if hr_res.data:
+        hr = hr_res.data[0]
+        reset_token = secrets.token_urlsafe(32)
+        expires_at  = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+
+        # Store token in DB (upsert — one active token per user)
+        supabase.table("password_reset_tokens").upsert({
+            "hr_id":      str(hr["id"]),
+            "token":      reset_token,
+            "expires_at": expires_at,
+            "used":       False
+        }, on_conflict="hr_id").execute()
+
+        # Send reset email
+        _send_password_reset_email(
+            to_email=hr["email"],
+            name=hr["name"],
+            reset_token=reset_token
+        )
+
+    # Always return the same message — prevents email enumeration
+    return {"message": "If that email is registered, a reset link has been sent."}
+
+
+@app.post("/hr/reset-password", summary="Reset password using a valid token")
+def reset_password(data: ResetPasswordRequest):
+    """Validates the reset token and updates the password."""
+    token_res = supabase.table("password_reset_tokens")\
+        .select("*")\
+        .eq("token", data.token)\
+        .eq("used", False)\
+        .execute()
+
+    if not token_res.data:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
+
+    record = token_res.data[0]
+
+    # Check expiry
+    from datetime import timezone
+    expires_at = datetime.fromisoformat(record["expires_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+
+    # Update password
+    new_hash = hash_password(data.password)
+    supabase.table("hr_users").update({"password_hash": new_hash})\
+        .eq("id", record["hr_id"]).execute()
+
+    # Mark token as used so it can't be reused
+    supabase.table("password_reset_tokens").update({"used": True})\
+        .eq("token", data.token).execute()
+
+    return {"message": "Password updated successfully. You can now log in."}
+
+
+def _send_password_reset_email(to_email: str, name: str, reset_token: str):
+    """Sends a password reset link to the HR user."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        print(f"[Dev] Password reset token for {to_email}: {reset_token}")
+        return
+    try:
+        reset_link = f"{FRONTEND_URL or 'http://localhost:5500/frontend'}/reset-password.html?token={reset_token}"
+        subject = "Reset Your CorpoCalm Gateway Password"
+        body = f"""
+        <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:24px;color:white;text-align:center;">
+                <h2 style="margin:0;">CorpoCalm Gateway</h2>
+                <p style="margin:4px 0 0;opacity:0.85;font-size:13px;">Password Reset</p>
+            </div>
+            <div style="padding:28px 24px;">
+                <p>Hi <strong>{name}</strong>,</p>
+                <p style="margin-top:12px;">We received a request to reset your password. Click the button below to set a new password.</p>
+                <div style="text-align:center;margin-top:24px;">
+                    <a href="{reset_link}" style="background:#1a237e;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;">Reset Password</a>
+                </div>
+                <p style="margin-top:20px;font-size:13px;color:#888;">This link expires in <strong>1 hour</strong>. If you didn't request this, ignore this email — your password won't change.</p>
+            </div>
+            <div style="background:#f5f5f5;padding:14px;text-align:center;font-size:11px;color:#aaa;">
+                CorpoCalm Gateway &nbsp;|&nbsp; Built by Priti Ganesh Lande
+            </div>
+        </div>"""
+        _send_email(to_email, subject, body)
+    except Exception as e:
+        print(f"[Email Warning] Password reset email failed: {e}")
+
+
+# ──────────────────────────────────────────
 # TEAM MANAGEMENT ENDPOINTS
 # ──────────────────────────────────────────
 

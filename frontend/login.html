@@ -43,7 +43,21 @@
             <input type="email" id="loginEmail" placeholder="your@email.com">
             <label>Password</label>
             <input type="password" id="loginPassword" placeholder="Enter your password">
+            <div style="text-align:right;margin-top:6px;">
+                <a href="#" onclick="switchTab('forgot')" style="font-size:12px;color:#1a237e;text-decoration:none;">Forgot password?</a>
+            </div>
             <button class="primary" id="loginBtn" onclick="login()">Login</button>
+        </div>
+
+        <!-- Forgot Password Form -->
+        <div id="forgotForm" style="display:none;">
+            <p style="font-size:13px;color:#666;margin-bottom:16px;">Enter your email and we'll send you a reset link.</p>
+            <label>Email</label>
+            <input type="email" id="forgotEmail" placeholder="your@email.com">
+            <button class="primary" id="forgotBtn" onclick="forgotPassword()">Send Reset Link</button>
+            <div style="text-align:center;margin-top:14px;">
+                <a href="#" onclick="switchTab('login')" style="font-size:13px;color:#1a237e;text-decoration:none;">← Back to Login</a>
+            </div>
         </div>
 
         <!-- Signup Form -->
@@ -71,9 +85,10 @@
     }
 
     function switchTab(tab) {
-        document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
+        document.getElementById('loginForm').style.display  = tab === 'login'  ? 'block' : 'none';
         document.getElementById('signupForm').style.display = tab === 'signup' ? 'block' : 'none';
-        document.getElementById('loginTab').classList.toggle('active', tab === 'login');
+        document.getElementById('forgotForm').style.display = tab === 'forgot' ? 'block' : 'none';
+        document.getElementById('loginTab').classList.toggle('active',  tab === 'login');
         document.getElementById('signupTab').classList.toggle('active', tab === 'signup');
         hideMsg();
     }
@@ -153,6 +168,33 @@
         } finally {
             btn.disabled = false;
             btn.textContent = 'Create Account';
+        }
+    }
+
+    async function forgotPassword() {
+        const email = document.getElementById('forgotEmail').value.trim();
+        const btn   = document.getElementById('forgotBtn');
+
+        if (!email) { showMsg('Please enter your email address.', 'error'); return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/hr/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+            showMsg(data.message, 'success');
+            btn.style.display = 'none';
+        } catch (err) {
+            showMsg(err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Send Reset Link';
         }
     }
 

@@ -130,3 +130,16 @@ CREATE TABLE IF NOT EXISTS answers (
 --     expires_at     TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '7 days')
 -- );
 -- ============================================================
+
+-- ============================================================
+-- Migration 003: Password Reset Tokens
+-- ============================================================
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hr_id       UUID REFERENCES hr_users(id) ON DELETE CASCADE UNIQUE,
+    token       VARCHAR(255) UNIQUE NOT NULL,
+    expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+    used        BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+-- ============================================================
