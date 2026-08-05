@@ -56,8 +56,8 @@ class QuestionResponse(BaseModel):
 # ==========================================
 class AnswerSubmit(BaseModel):
     question_id: Optional[str] = Field(None, description="UUID of the screening question")
-    question_text: str = Field(..., description="The question text (stored for reference)")
-    candidate_answer: str = Field("", description="Candidate's answer")
+    question_text: str = Field(..., min_length=1, max_length=500, description="The question text (stored for reference)")
+    candidate_answer: str = Field("", max_length=5000, description="Candidate's answer — max 5000 characters")
 
 
 class AnswerResponse(BaseModel):
@@ -79,12 +79,12 @@ class ApplicationCreate(BaseModel):
     job_id: str = Field(..., description="UUID of the job")
     candidate_name: str = Field(..., min_length=2, max_length=255, description="Full name of the candidate")
     candidate_email: EmailStr = Field(..., description="Email address (validated format)")
-    tab_switch_count: int = Field(0, ge=0, description="Anti-cheat: number of tab switches detected")
-    face_away_count: int = Field(0, ge=0, description="Proctoring: number of times face not detected")
+    tab_switch_count: int = Field(0, ge=0, le=1000, description="Anti-cheat: number of tab switches detected")
+    face_away_count: int = Field(0, ge=0, le=1000, description="Proctoring: number of times face not detected")
     camera_declined: bool = Field(False, description="Proctoring: whether candidate denied camera access")
-    answers: List[AnswerSubmit] = Field(default_factory=list, description="List of answers")
-    github_url: Optional[str] = Field(None, description="GitHub profile URL")
-    portfolio_url: Optional[str] = Field(None, description="Portfolio or personal website URL")
+    answers: List[AnswerSubmit] = Field(default_factory=list, max_items=20, description="List of answers — max 20 questions")
+    github_url: Optional[str] = Field(None, max_length=500, description="GitHub profile URL")
+    portfolio_url: Optional[str] = Field(None, max_length=500, description="Portfolio or personal website URL")
 
 
 class ApplicationResponse(BaseModel):

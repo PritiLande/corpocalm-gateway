@@ -1316,6 +1316,13 @@ def submit_application(app_data: ApplicationCreate):
     """
     Saves application + answers, scores the submission, sends HR notification.
     """
+    # Guard: answer count and length (defence-in-depth beyond Pydantic)
+    if len(app_data.answers) > 20:
+        raise HTTPException(status_code=400, detail="Too many answers submitted. Maximum is 20 questions.")
+    for a in app_data.answers:
+        if len(a.candidate_answer) > 5000:
+            raise HTTPException(status_code=400, detail="Answer too long. Maximum is 5000 characters per answer.")
+
     # Validate job exists
     job_res = supabase.table("jobs").select("id, role_title, passing_threshold").eq("id", app_data.job_id).execute()
     if not job_res.data:
