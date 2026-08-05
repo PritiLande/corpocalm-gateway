@@ -251,8 +251,15 @@
     }
 
     function logout() {
+        // Clear auth
         localStorage.removeItem('hr_token');
         localStorage.removeItem('hr_name');
+        localStorage.removeItem('hr_role');
+        localStorage.removeItem('hr_company_id');
+        localStorage.removeItem('hr_email');
+        localStorage.removeItem('hr_company');
+        // Clear saved form fields so next user starts fresh
+        SAVE_FIELDS.forEach(id => localStorage.removeItem('cc_' + id));
         window.location.href = 'login.html';
     }
 
