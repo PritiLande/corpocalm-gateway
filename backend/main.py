@@ -6,9 +6,13 @@ import bcrypt
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Header, Query, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Header, Query, Depends, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from supabase import create_client, Client
 from supabase.lib.client_options import SyncClientOptions
 from groq import Groq
@@ -148,6 +152,27 @@ def verify_job_ownership(job_id: str, company_id: str) -> dict:
     return job_res.data[0]
 
 app = FastAPI(title="CorpoCalm Gateway API")
+
+# ── Rate limiting (slowapi) ──
+# Key function: use IP for public endpoints, HR id for authenticated endpoints
+def get_hr_id_or_ip(request: Request) -> str:
+    """For authenticated endpoints use HR id from JWT; fall back to IP."""
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            token = auth.split(" ", 1)[1]
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            company_id = payload.get("company_id", "")
+            if company_id:
+                return f"company:{company_id}"
+        except Exception:
+            pass
+    return get_remote_address(request)
+
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Tighten to your frontend domain in production
@@ -547,7 +572,8 @@ def health_check():
 # ──────────────────────────────────────────
 
 @app.post("/hr/signup", summary="HR Sign Up")
-def hr_signup(data: HRSignup):
+@limiter.limit("3/minute")
+def hr_signup(request: Request, data: HRSignup):
     if len(data.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
     if len(data.password) > 72:
@@ -586,7 +612,8 @@ def hr_signup(data: HRSignup):
 
 
 @app.post("/hr/login", summary="HR Login")
-def hr_login(data: HRLogin):
+@limiter.limit("5/minute")
+def hr_login(request: Request, data: HRLogin):
     res = supabase.table("hr_users").select("*").eq("email", data.email).execute()
 
     if not res.data:
@@ -850,7 +877,8 @@ def _send_team_invite_email(to_email: str, inviter_name: str, company_name: str,
 # ──────────────────────────────────────────
 
 @app.post("/generate-questions", summary="AI generates screening questions")
-def generate_questions(data: GenerateQuestionsRequest, hr=Depends(get_current_hr)):
+@limiter.limit("20/hour", key_func=get_hr_id_or_ip)
+def generate_questions(request: Request, data: GenerateQuestionsRequest, hr=Depends(get_current_hr)):
     if not groq_client:
         raise HTTPException(status_code=503, detail="AI not configured. Please add GROQ_API_KEY to .env")
 
@@ -896,7 +924,8 @@ Return ONLY the 5 questions, one per line, nothing else."""
 
 
 @app.post("/generate-description", summary="AI writes a job description")
-def generate_description(data: GenerateDescriptionRequest, hr=Depends(get_current_hr)):
+@limiter.limit("20/hour", key_func=get_hr_id_or_ip)
+def generate_description(request: Request, data: GenerateDescriptionRequest, hr=Depends(get_current_hr)):
     """Uses Groq LLaMA 3 to write a professional job description based on the job title and details."""
     if not groq_client:
         raise HTTPException(status_code=503, detail="AI not configured. Please add GROQ_API_KEY to .env")
@@ -948,7 +977,8 @@ Return ONLY the job description text, nothing else."""
 
 
 @app.post("/generate-skills", summary="AI suggests required skills for a job role")
-def generate_skills(data: GenerateSkillsRequest, hr=Depends(get_current_hr)):
+@limiter.limit("20/hour", key_func=get_hr_id_or_ip)
+def generate_skills(request: Request, data: GenerateSkillsRequest, hr=Depends(get_current_hr)):
     """Uses Groq LLaMA 3 to suggest a comma-separated list of required skills."""
     if not groq_client:
         raise HTTPException(status_code=503, detail="AI not configured. Please add GROQ_API_KEY to .env")
@@ -1001,7 +1031,8 @@ Return ONLY the comma-separated skills list, nothing else."""
 
 
 @app.post("/generate-full-job", summary="AI generates entire job posting from just a title")
-def generate_full_job(data: GenerateFullJobRequest, hr=Depends(get_current_hr)):
+@limiter.limit("10/hour", key_func=get_hr_id_or_ip)
+def generate_full_job(request: Request, data: GenerateFullJobRequest, hr=Depends(get_current_hr)):
     """
     Single call that generates description, skills, questions,
     time limit, passing score, job type, experience and salary range
