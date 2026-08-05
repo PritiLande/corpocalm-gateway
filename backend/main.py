@@ -33,6 +33,11 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SECRET_KEY   = os.getenv("SECRET_GATEWAY_KEY", "").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
+# Frontend origin — used for CORS and invite email links
+# In production set FRONTEND_URL=https://yourdomain.com in .env
+# In development leave unset — falls back to permissive localhost origins
+FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+
 # Email config (optional)
 SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
@@ -151,6 +156,30 @@ def verify_job_ownership(job_id: str, company_id: str) -> dict:
         raise HTTPException(status_code=403, detail="Access denied.")
     return job_res.data[0]
 
+def _get_allowed_origins() -> list:
+    """
+    Build CORS allowed origins list.
+    - Production: only the domain set in FRONTEND_URL env var.
+    - Development (FRONTEND_URL not set): allow localhost on common ports
+      so dev servers work without any config change.
+    """
+    if FRONTEND_URL:
+        origins = [FRONTEND_URL]
+        # Also allow www subdomain if a bare domain was provided
+        if FRONTEND_URL.startswith("https://") and not FRONTEND_URL.startswith("https://www."):
+            origins.append(FRONTEND_URL.replace("https://", "https://www."))
+        return origins
+    # Development fallback — localhost only
+    return [
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:5500",
+        "http://localhost:8080",
+        "http://127.0.0.1",
+        "http://127.0.0.1:5500",
+        "null",  # file:// origin (opening HTML files directly in browser)
+    ]
+
 app = FastAPI(title="CorpoCalm Gateway API")
 
 # ── Rate limiting (slowapi) ──
@@ -175,9 +204,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten to your frontend domain in production
+    allow_origins=_get_allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 
@@ -847,7 +877,7 @@ def _send_team_invite_email(to_email: str, inviter_name: str, company_name: str,
         return
     try:
         # The frontend accept-invite page
-        invite_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:5500/frontend')}/accept-invite.html?token={invite_token}"
+        invite_link = f"{FRONTEND_URL or 'http://localhost:5500/frontend'}/accept-invite.html?token={invite_token}"
         subject = f"You're invited to join {company_name} on CorpoCalm Gateway"
         body = f"""
         <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
