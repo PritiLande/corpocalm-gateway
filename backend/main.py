@@ -114,6 +114,36 @@ def get_current_hr(credentials: HTTPAuthorizationCredentials = Depends(bearer_sc
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token. Please login again.")
 
+
+def require_company_id(hr: dict) -> str:
+    """Extract company_id from token, raise 403 if missing."""
+    company_id = hr.get("company_id", "")
+    if not company_id:
+        raise HTTPException(status_code=403, detail="Your account is not linked to a company.")
+    return company_id
+
+
+def verify_application_ownership(application_id: str, company_id: str) -> dict:
+    """Fetch application and verify it belongs to a job owned by this company."""
+    app_res = supabase.table("applications").select("*").eq("id", application_id).execute()
+    if not app_res.data:
+        raise HTTPException(status_code=404, detail="Application not found")
+    application = app_res.data[0]
+    job_res = supabase.table("jobs").select("company_id").eq("id", application["job_id"]).execute()
+    if not job_res.data or str(job_res.data[0].get("company_id")) != str(company_id):
+        raise HTTPException(status_code=403, detail="Access denied.")
+    return application
+
+
+def verify_job_ownership(job_id: str, company_id: str) -> dict:
+    """Fetch job and verify it belongs to this company."""
+    job_res = supabase.table("jobs").select("*").eq("id", job_id).execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if str(job_res.data[0].get("company_id")) != str(company_id):
+        raise HTTPException(status_code=403, detail="Access denied.")
+    return job_res.data[0]
+
 app = FastAPI(title="CorpoCalm Gateway API")
 app.add_middleware(
     CORSMiddleware,
@@ -1124,11 +1154,9 @@ def save_draft(job: JobCreate, hr=Depends(get_current_hr)):
 @app.patch("/jobs/{job_id}/publish", summary="Publish a draft job (HR login required)")
 def publish_draft(job_id: str, hr=Depends(get_current_hr)):
     """Publishes an existing draft job, making it visible to candidates."""
-    job_res = supabase.table("jobs").select("id, status, company_id").eq("id", job_id).execute()
-    if not job_res.data:
-        raise HTTPException(status_code=404, detail="Job not found")
+    company_id = require_company_id(hr)
+    job = verify_job_ownership(job_id, company_id)
 
-    job = job_res.data[0]
     if job.get("status") == "published":
         raise HTTPException(status_code=400, detail="Job is already published.")
 
@@ -1144,22 +1172,22 @@ def publish_draft(job_id: str, hr=Depends(get_current_hr)):
 @app.get("/jobs/drafts", summary="List all draft jobs for this HR's company")
 def list_drafts(hr=Depends(get_current_hr)):
     """Returns all draft jobs scoped to the HR's company."""
-    company_id = hr.get("company_id")
-    query = supabase.table("jobs").select("id, role_title, location, job_type, created_at, status")\
-        .eq("status", "draft")
-    if company_id:
-        query = query.eq("company_id", company_id)
-    res = query.order("created_at", desc=True).execute()
+    company_id = require_company_id(hr)
+    res = supabase.table("jobs")\
+        .select("id, role_title, location, job_type, created_at, status")\
+        .eq("status", "draft")\
+        .eq("company_id", company_id)\
+        .order("created_at", desc=True)\
+        .execute()
     return res.data or []
 
 
 @app.delete("/jobs/{job_id}/draft", summary="Delete a draft job")
 def delete_draft(job_id: str, hr=Depends(get_current_hr)):
     """Deletes a draft job. Cannot delete published jobs this way."""
-    job_res = supabase.table("jobs").select("id, status").eq("id", job_id).execute()
-    if not job_res.data:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job_res.data[0].get("status") != "draft":
+    company_id = require_company_id(hr)
+    job = verify_job_ownership(job_id, company_id)
+    if job.get("status") != "draft":
         raise HTTPException(status_code=400, detail="Only draft jobs can be deleted this way.")
     supabase.table("jobs").delete().eq("id", job_id).execute()
     return {"message": "Draft deleted."}
@@ -1304,14 +1332,25 @@ def list_applications(
     hr=Depends(get_current_hr)
 ):
     """Search and filter applications with pagination and sorting."""
+    company_id = require_company_id(hr)
     allowed_sort = {"created_at", "ai_score", "candidate_name", "submit_time"}
     if sort_by not in allowed_sort:
         sort_by = "created_at"
     ascending = sort_dir.lower() == "asc"
 
-    query = supabase.table("applications").select("*", count="exact")
+    # Get all job_ids that belong to this company first
+    jobs_res = supabase.table("jobs").select("id").eq("company_id", company_id).execute()
+    company_job_ids = [j["id"] for j in (jobs_res.data or [])]
+    if not company_job_ids:
+        return {"data": [], "total": 0, "page": page, "page_size": page_size, "total_pages": 1}
 
-    if job_id:   query = query.eq("job_id", job_id)
+    query = supabase.table("applications").select("*", count="exact").in_("job_id", company_job_ids)
+
+    if job_id:
+        # Extra safety: only allow filtering by a job the HR owns
+        if job_id not in company_job_ids:
+            return {"data": [], "total": 0, "page": page, "page_size": page_size, "total_pages": 1}
+        query = query.eq("job_id", job_id)
     if name:     query = query.ilike("candidate_name", f"%{name}%")
     if email:    query = query.ilike("candidate_email", f"%{email}%")
     if status:   query = query.eq("status", status)
@@ -1348,10 +1387,21 @@ def get_ranking(
     Adds rank number, medal (for top 3), and percentile.
     Best attempt per candidate per job is used (no duplicates).
     """
+    company_id = require_company_id(hr)
+
+    # Scope to this company's jobs only
+    jobs_res = supabase.table("jobs").select("id").eq("company_id", company_id).execute()
+    company_job_ids = [j["id"] for j in (jobs_res.data or [])]
+    if not company_job_ids:
+        return {"total": 0, "ranking": []}
+
     query = supabase.table("applications")\
-        .select("id, candidate_name, candidate_email, ai_score, status, hr_status, tab_switch_count, job_id, attempt_number, submit_time, created_at")
+        .select("id, candidate_name, candidate_email, ai_score, status, hr_status, tab_switch_count, job_id, attempt_number, submit_time, created_at")\
+        .in_("job_id", company_job_ids)
 
     if job_id:
+        if job_id not in company_job_ids:
+            return {"total": 0, "ranking": []}
         query = query.eq("job_id", job_id)
     if hr_status:
         query = query.eq("hr_status", hr_status)
@@ -1409,7 +1459,9 @@ def get_ranking(
 
 
 @app.get("/applications/{application_id}/answers", summary="Get answers for an application")
-def get_answers(application_id: str):
+def get_answers(application_id: str, hr=Depends(get_current_hr)):
+    company_id = require_company_id(hr)
+    verify_application_ownership(application_id, company_id)
     res = supabase.table("answers").select("*").eq("application_id", application_id).execute()
     if res.data is None:
         raise HTTPException(status_code=404, detail="No answers found")
@@ -1419,11 +1471,8 @@ def get_answers(application_id: str):
 @app.get("/applications/{application_id}/profile", summary="Full candidate profile")
 def get_candidate_profile(application_id: str, hr=Depends(get_current_hr)):
     """Returns full candidate profile: application + answers + job info."""
-    # Get application
-    app_res = supabase.table("applications").select("*").eq("id", application_id).execute()
-    if not app_res.data:
-        raise HTTPException(status_code=404, detail="Application not found")
-    application = app_res.data[0]
+    company_id = require_company_id(hr)
+    application = verify_application_ownership(application_id, company_id)
 
     # Get answers
     ans_res = supabase.table("answers").select("*").eq("application_id", application_id).execute()
@@ -1455,7 +1504,7 @@ async def upload_resume(
 ):
     """
     Upload a resume (PDF or DOCX, max 5MB) for a candidate application.
-    Stores the file in Supabase Storage and saves the public URL.
+    Stored in Supabase Storage. Auth not required — called by candidate immediately after submission.
     """
     # Validate file type
     allowed_types = {
@@ -1516,6 +1565,9 @@ class HRStatusUpdate(BaseModel):
 
 @app.patch("/applications/{application_id}/hr-status", summary="Update HR status and notes")
 def update_hr_status(application_id: str, data: HRStatusUpdate, hr=Depends(get_current_hr)):
+    company_id = require_company_id(hr)
+    verify_application_ownership(application_id, company_id)
+
     update_data = {}
     if data.hr_status is not None:
         update_data["hr_status"] = data.hr_status
@@ -1560,14 +1612,22 @@ def update_hr_status(application_id: str, data: HRStatusUpdate, hr=Depends(get_c
 @app.get("/analytics", summary="Dashboard analytics for HR")
 def get_analytics(hr=Depends(get_current_hr)):
     """Returns all analytics data needed for the dashboard."""
+    company_id = require_company_id(hr)
 
-    # Total candidates (unique emails in applications)
-    all_apps = supabase.table("applications").select("id, candidate_name, candidate_email, ai_score, status, hr_status, created_at, job_id").execute()
-    apps = all_apps.data or []
+    # Scope to this company's jobs only
+    all_jobs_res = supabase.table("jobs").select("id, role_title, created_at").eq("company_id", company_id).execute()
+    jobs = all_jobs_res.data or []
+    company_job_ids = [j["id"] for j in jobs]
 
-    # Active jobs count
-    all_jobs = supabase.table("jobs").select("id, role_title, created_at").execute()
-    jobs = all_jobs.data or []
+    # Only fetch applications for this company's jobs
+    if company_job_ids:
+        all_apps_res = supabase.table("applications")\
+            .select("id, candidate_name, candidate_email, ai_score, status, hr_status, created_at, job_id")\
+            .in_("job_id", company_job_ids)\
+            .execute()
+        apps = all_apps_res.data or []
+    else:
+        apps = []
 
     total_candidates   = len(apps)
     active_jobs        = len(jobs)
@@ -1669,31 +1729,26 @@ class AssessmentInviteRequest(BaseModel):
 @app.post("/notifications/schedule-interview", summary="Send interview scheduled email to candidate")
 def schedule_interview(data: InterviewScheduleRequest, hr=Depends(get_current_hr)):
     """Sends interview schedule notification to a candidate."""
-    app_res = supabase.table("applications").select("candidate_name, candidate_email, job_id").eq("id", data.application_id).execute()
-    if not app_res.data:
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    app_info = app_res.data[0]
-    job_res = supabase.table("jobs").select("role_title").eq("id", app_info["job_id"]).execute()
+    company_id = require_company_id(hr)
+    application = verify_application_ownership(data.application_id, company_id)
+    job_res = supabase.table("jobs").select("role_title").eq("id", application["job_id"]).execute()
     role_title = job_res.data[0]["role_title"] if job_res.data else "the position"
 
     send_interview_scheduled_email(
-        candidate_name=app_info["candidate_name"],
-        candidate_email=app_info["candidate_email"],
+        candidate_name=application["candidate_name"],
+        candidate_email=application["candidate_email"],
         role_title=role_title,
         interview_details=data.interview_details
     )
-    return {"message": f"Interview notification sent to {app_info['candidate_email']}"}
+    return {"message": f"Interview notification sent to {application['candidate_email']}"}
 
 
 @app.post("/notifications/send-assessment-invite", summary="Send assessment invitation email to a candidate")
 def send_assessment_invite(data: AssessmentInviteRequest, hr=Depends(get_current_hr)):
     """Sends assessment invitation email with portal link to a candidate."""
-    job_res = supabase.table("jobs").select("role_title, time_limit_minutes").eq("id", data.job_id).execute()
-    if not job_res.data:
-        raise HTTPException(status_code=404, detail="Job not found")
+    company_id = require_company_id(hr)
+    job = verify_job_ownership(data.job_id, company_id)
 
-    job = job_res.data[0]
     hr_res = supabase.table("hr_users").select("company_name").eq("email", hr["email"]).execute()
     company = hr_res.data[0]["company_name"] if hr_res.data else "CorpoCalm Gateway"
 
@@ -1722,6 +1777,8 @@ class NoteUpdate(BaseModel):
 
 @app.get("/applications/{application_id}/notes", summary="Get all recruiter notes for an application")
 def get_notes(application_id: str, hr=Depends(get_current_hr)):
+    company_id = require_company_id(hr)
+    verify_application_ownership(application_id, company_id)
     res = supabase.table("recruiter_notes")\
         .select("*")\
         .eq("application_id", application_id)\
@@ -1732,10 +1789,8 @@ def get_notes(application_id: str, hr=Depends(get_current_hr)):
 
 @app.post("/applications/{application_id}/notes", summary="Add a recruiter note")
 def add_note(application_id: str, data: NoteCreate, hr=Depends(get_current_hr)):
-    # Verify application exists
-    app_res = supabase.table("applications").select("id").eq("id", application_id).execute()
-    if not app_res.data:
-        raise HTTPException(status_code=404, detail="Application not found")
+    company_id = require_company_id(hr)
+    verify_application_ownership(application_id, company_id)
 
     res = supabase.table("recruiter_notes").insert({
         "application_id": application_id,
