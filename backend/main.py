@@ -109,22 +109,52 @@ class GenerateSkillsRequest(BaseModel):
 class GenerateFullJobRequest(BaseModel):
     role_title: str
 
-def create_token(hr_id: str, email: str, company_id: str = "", role: str = "admin") -> str:
+def create_token(hr_id: str, email: str) -> str:
+    """
+    JWT contains only hr_id and email as identity claims.
+    role and company_id are always fetched fresh from DB in get_current_hr().
+    """
     payload = {
         "sub": hr_id,
         "email": email,
-        "company_id": company_id,
-        "role": role,
         "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 def get_current_hr(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    """
+    Validates JWT signature and expiry, then fetches fresh role and company_id
+    from the database. DB is the source of truth — stale tokens cannot carry
+    elevated privileges.
+    """
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token. Please login again.")
+
+    hr_id = payload.get("sub")
+    if not hr_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload.")
+
+    # Always fetch current role and company_id from DB — never trust the token for these
+    hr_res = supabase.table("hr_users")\
+        .select("id, email, name, role, company_id, company_name")\
+        .eq("id", hr_id)\
+        .execute()
+
+    if not hr_res.data:
+        raise HTTPException(status_code=401, detail="Account not found. Please login again.")
+
+    hr = hr_res.data[0]
+
+    return {
+        "sub":          str(hr["id"]),
+        "email":        hr["email"],
+        "name":         hr.get("name", ""),
+        "role":         hr.get("role", "member"),
+        "company_id":   str(hr.get("company_id") or ""),
+        "company_name": hr.get("company_name", ""),
+    }
 
 
 def require_company_id(hr: dict) -> str:
@@ -185,15 +215,15 @@ app = FastAPI(title="CorpoCalm Gateway API")
 # ── Rate limiting (slowapi) ──
 # Key function: use IP for public endpoints, HR id for authenticated endpoints
 def get_hr_id_or_ip(request: Request) -> str:
-    """For authenticated endpoints use HR id from JWT; fall back to IP."""
+    """For authenticated endpoints use HR id from JWT sub; fall back to IP."""
     auth = request.headers.get("authorization", "")
     if auth.startswith("Bearer "):
         try:
             token = auth.split(" ", 1)[1]
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            company_id = payload.get("company_id", "")
-            if company_id:
-                return f"company:{company_id}"
+            hr_id = payload.get("sub", "")
+            if hr_id:
+                return f"hr:{hr_id}"
         except Exception:
             pass
     return get_remote_address(request)
@@ -656,9 +686,7 @@ def hr_login(request: Request, data: HRLogin):
 
     token = create_token(
         hr_id=str(hr["id"]),
-        email=hr["email"],
-        company_id=str(hr.get("company_id") or ""),
-        role=hr.get("role", "admin")
+        email=hr["email"]
     )
     return {
         "token": token,
