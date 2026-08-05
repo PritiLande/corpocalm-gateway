@@ -82,7 +82,7 @@ class ApplicationCreate(BaseModel):
     tab_switch_count: int = Field(0, ge=0, le=1000, description="Anti-cheat: number of tab switches detected")
     face_away_count: int = Field(0, ge=0, le=1000, description="Proctoring: number of times face not detected")
     camera_declined: bool = Field(False, description="Proctoring: whether candidate denied camera access")
-    answers: List[AnswerSubmit] = Field(default_factory=list, max_items=20, description="List of answers — max 20 questions")
+    answers: List[AnswerSubmit] = Field(default_factory=list, max_length=20, description="List of answers — max 20 questions")
     github_url: Optional[str] = Field(None, max_length=500, description="GitHub profile URL")
     portfolio_url: Optional[str] = Field(None, max_length=500, description="Portfolio or personal website URL")
 
