@@ -143,10 +143,23 @@ function buildJobCard(j) {
 
     // Action buttons based on status
     let actions = '';
+    let portalLinkHtml = '';
     if (j.status === 'published') {
+        portalLinkHtml = `
+            <div style="padding:10px 20px;background:#f0f4ff;border-top:1px solid #e8eaf6;font-size:13px;">
+                <span style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Portal Link</span><br>
+                <a href="${portalLink}" target="_blank"
+                   style="color:#1a237e;font-weight:600;word-break:break-all;text-decoration:none;"
+                   title="${portalLink}">
+                   🔗 ${esc(j.role_title)}
+                </a>
+                <button onclick="copyLink('${portalLink}')"
+                    style="margin-left:8px;padding:2px 8px;background:#1a237e;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;vertical-align:middle;">
+                    Copy
+                </button>
+            </div>`;
         actions = `
             <button class="btn-sm btn-view"  onclick="viewApplicants('${j.id}')">👥 Applicants (${j.applicant_count || 0})</button>
-            <button class="btn-sm btn-copy"  onclick="copyLink('${portalLink}')">🔗 Copy Link</button>
             <button class="btn-sm btn-close" onclick="closeJob('${j.id}', '${esc(j.role_title)}')">🔒 Close</button>`;
     } else if (j.status === 'draft') {
         actions = `
@@ -175,6 +188,7 @@ function buildJobCard(j) {
             </div>
             <div class="date-text">Created: ${created} &nbsp;·&nbsp; ${expiry}</div>
         </div>
+        ${portalLinkHtml}
         <div class="job-card-footer">${actions}</div>
     </div>`;
 }
