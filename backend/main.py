@@ -1384,6 +1384,61 @@ def list_drafts(hr=Depends(get_current_hr)):
     return res.data or []
 
 
+@app.get("/jobs", summary="List all jobs for this HR's company")
+def list_jobs(
+    status: Optional[str] = Query(None, description="Filter by status: published, draft, closed"),
+    hr=Depends(get_current_hr)
+):
+    """Returns all jobs (published, draft, closed) for the HR's company."""
+    company_id = require_company_id(hr)
+    query = supabase.table("jobs")\
+        .select("id, role_title, location, job_type, salary_range, experience_required, status, created_at, expiry_date, passing_threshold, time_limit_minutes")\
+        .eq("company_id", company_id)
+    if status:
+        query = query.eq("status", status)
+    res = query.order("created_at", desc=True).execute()
+
+    # Enrich each job with application count
+    jobs = res.data or []
+    if jobs:
+        job_ids = [j["id"] for j in jobs]
+        counts_res = supabase.table("applications")\
+            .select("job_id")\
+            .in_("job_id", job_ids)\
+            .execute()
+        counts = {}
+        for row in (counts_res.data or []):
+            counts[row["job_id"]] = counts.get(row["job_id"], 0) + 1
+        for j in jobs:
+            j["applicant_count"] = counts.get(j["id"], 0)
+
+    return jobs
+
+
+@app.patch("/jobs/{job_id}/close", summary="Close a published job (stop accepting applications)")
+def close_job(job_id: str, hr=Depends(get_current_hr)):
+    """Marks a job as closed — candidates can no longer apply."""
+    company_id = require_company_id(hr)
+    job = verify_job_ownership(job_id, company_id)
+    if job.get("status") == "closed":
+        raise HTTPException(status_code=400, detail="Job is already closed.")
+    if job.get("status") == "draft":
+        raise HTTPException(status_code=400, detail="Cannot close a draft job. Publish it first.")
+    supabase.table("jobs").update({"status": "closed"}).eq("id", job_id).execute()
+    return {"job_id": job_id, "status": "closed"}
+
+
+@app.patch("/jobs/{job_id}/reopen", summary="Reopen a closed job")
+def reopen_job(job_id: str, hr=Depends(get_current_hr)):
+    """Reopens a closed job to accept applications again."""
+    company_id = require_company_id(hr)
+    job = verify_job_ownership(job_id, company_id)
+    if job.get("status") != "closed":
+        raise HTTPException(status_code=400, detail="Only closed jobs can be reopened.")
+    supabase.table("jobs").update({"status": "published"}).eq("id", job_id).execute()
+    return {"job_id": job_id, "status": "published"}
+
+
 @app.delete("/jobs/{job_id}/draft", summary="Delete a draft job")
 def delete_draft(job_id: str, hr=Depends(get_current_hr)):
     """Deletes a draft job. Cannot delete published jobs this way."""
@@ -1402,6 +1457,10 @@ def get_job(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     job = job_res.data[0]
+
+    # Block closed jobs for candidates
+    if job.get("status") == "closed":
+        raise HTTPException(status_code=410, detail="This job posting is closed. Applications are no longer accepted.")
 
     # Check expiry date
     if job.get("expiry_date"):

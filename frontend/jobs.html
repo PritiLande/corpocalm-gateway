@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Job Management — CorpoCalm Gateway</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { padding: 0; }
+        .container { max-width: 1200px; margin: 28px auto; padding: 0 20px 48px; }
+        .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:12px; }
+        .topbar h1 { margin:0; font-size:20px; color:#1a237e; }
+        .filter-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; align-items:center; }
+        .filter-bar select { padding:8px 12px; border:1.5px solid #e2e8f0; border-radius:8px; font-size:13px; background:#fff; }
+        .filter-bar select:focus { border-color:#4f46e5; outline:none; }
+        .jobs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:18px; }
+        .job-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(26,35,126,0.07); overflow:hidden; transition:box-shadow 0.18s; }
+        .job-card:hover { box-shadow:0 4px 20px rgba(26,35,126,0.13); }
+        .job-card-header { padding:18px 20px 14px; border-bottom:1px solid #f1f5f9; }
+        .job-title { font-size:16px; font-weight:700; color:#1a237e; margin-bottom:6px; }
+        .job-meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+        .meta-pill { font-size:12px; padding:3px 10px; border-radius:12px; background:#f0f4ff; color:#4f46e5; font-weight:500; }
+        .job-card-body { padding:14px 20px; }
+        .job-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:14px; }
+        .stat-item { text-align:center; }
+        .stat-item .val { font-size:20px; font-weight:800; color:#1a237e; }
+        .stat-item .lbl { font-size:11px; color:#94a3b8; text-transform:uppercase; font-weight:600; }
+        .job-card-footer { padding:12px 20px; background:#f8faff; border-top:1px solid #f1f5f9; display:flex; gap:8px; flex-wrap:wrap; justify-content:space-between; align-items:center; }
+        .status-badge { font-size:12px; font-weight:700; padding:4px 12px; border-radius:20px; }
+        .badge-published { background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; }
+        .badge-draft     { background:#fff8e1; color:#f57f17; border:1px solid #ffe082; }
+        .badge-closed    { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
+        .btn-sm { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:none; transition:all 0.15s; }
+        .btn-view       { background:#e8eaf6; color:#1a237e; }
+        .btn-view:hover { background:#c5cae9; }
+        .btn-copy       { background:#f3e5f5; color:#7b1fa2; }
+        .btn-copy:hover { background:#e1bee7; }
+        .btn-close      { background:#ffebee; color:#c62828; }
+        .btn-close:hover{ background:#ffcdd2; }
+        .btn-reopen     { background:#e8f5e9; color:#2e7d32; }
+        .btn-reopen:hover{ background:#c8e6c9; }
+        .btn-publish    { background:#1a237e; color:#fff; }
+        .btn-publish:hover{ background:#283593; }
+        .empty-state { text-align:center; padding:60px; color:#94a3b8; }
+        .empty-state .icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
+        .date-text { font-size:11px; color:#94a3b8; }
+    </style>
+</head>
+<body>
+<nav class="navbar">
+    <div class="navbar-brand">🔷 CorpoCalm Gateway</div>
+    <div class="navbar-nav">
+        <a href="admin.html"     class="nav-link">📝 Publish Job</a>
+        <a href="jobs.html"      class="nav-link active">💼 My Jobs</a>
+        <a href="dashboard.html" class="nav-link">📋 Dashboard</a>
+        <a href="analytics.html" class="nav-link">📊 Analytics</a>
+        <span class="nav-user">| <strong id="hrName"></strong></span>
+        <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="topbar">
+        <h1>💼 My Jobs</h1>
+        <a href="admin.html" style="background:#1a237e;color:#fff;padding:9px 20px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">+ Publish New Job</a>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <label style="font-size:13px;font-weight:600;color:#64748b;">Filter:</label>
+        <select id="statusFilter" onchange="loadJobs()">
+            <option value="">All Jobs</option>
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+            <option value="closed">Closed</option>
+        </select>
+        <span id="jobCount" style="font-size:13px;color:#94a3b8;margin-left:4px;"></span>
+    </div>
+
+    <div id="jobsGrid" class="jobs-grid">
+        <div class="empty-state"><div class="icon">💼</div><p>Loading jobs...</p></div>
+    </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const token = localStorage.getItem('hr_token');
+if (!token) window.location.href = 'login.html';
+
+document.getElementById('hrName').textContent = localStorage.getItem('hr_name') || 'HR';
+
+const PORTAL_BASE = window.location.href.replace('jobs.html', '');
+
+function logout() {
+    ['hr_token','hr_name','hr_role','hr_company_id','hr_email','hr_company'].forEach(k => localStorage.removeItem(k));
+    window.location.href = 'login.html';
+}
+
+async function loadJobs() {
+    const grid   = document.getElementById('jobsGrid');
+    const status = document.getElementById('statusFilter').value;
+    grid.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Loading...</p></div>';
+
+    try {
+        let url = `${CONFIG.BACKEND_URL}/jobs`;
+        if (status) url += `?status=${encodeURIComponent(status)}`;
+
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        const jobs = await res.json();
+
+        document.getElementById('jobCount').textContent = `${jobs.length} job${jobs.length !== 1 ? 's' : ''}`;
+
+        if (!jobs.length) {
+            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+                <div class="icon">💼</div>
+                <p style="font-size:15px;font-weight:600;color:#475569;">No jobs found</p>
+                <p style="margin-top:6px;"><a href="admin.html" style="color:#1a237e;font-weight:600;">Publish your first job →</a></p>
+            </div>`;
+            return;
+        }
+
+        grid.innerHTML = jobs.map(j => buildJobCard(j)).join('');
+    } catch (err) {
+        grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;color:#c62828;">⚠️ Failed to load: ${err.message}</div>`;
+    }
+}
+
+function buildJobCard(j) {
+    const statusBadge = {
+        published: '<span class="status-badge badge-published">✅ Published</span>',
+        draft:     '<span class="status-badge badge-draft">📝 Draft</span>',
+        closed:    '<span class="status-badge badge-closed">🔒 Closed</span>',
+    }[j.status] || '';
+
+    const pills = [j.location, j.job_type, j.salary_range, j.experience_required]
+        .filter(Boolean)
+        .map(v => `<span class="meta-pill">${esc(v)}</span>`)
+        .join('');
+
+    const portalLink = `${PORTAL_BASE}job-portal.html?job=${j.id}`;
+    const created    = new Date(j.created_at).toLocaleDateString();
+    const expiry     = j.expiry_date ? `Expires: ${j.expiry_date}` : 'No expiry';
+
+    // Action buttons based on status
+    let actions = '';
+    if (j.status === 'published') {
+        actions = `
+            <button class="btn-sm btn-view"  onclick="viewApplicants('${j.id}')">👥 Applicants (${j.applicant_count || 0})</button>
+            <button class="btn-sm btn-copy"  onclick="copyLink('${portalLink}')">🔗 Copy Link</button>
+            <button class="btn-sm btn-close" onclick="closeJob('${j.id}', '${esc(j.role_title)}')">🔒 Close</button>`;
+    } else if (j.status === 'draft') {
+        actions = `
+            <button class="btn-sm btn-publish" onclick="publishDraft('${j.id}', '${esc(j.role_title)}')">🚀 Publish</button>
+            <button class="btn-sm btn-view"    onclick="editDraft('${j.id}')">✏️ Edit</button>`;
+    } else if (j.status === 'closed') {
+        actions = `
+            <button class="btn-sm btn-reopen" onclick="reopenJob('${j.id}', '${esc(j.role_title)}')">🔓 Reopen</button>
+            <button class="btn-sm btn-view"   onclick="viewApplicants('${j.id}')">👥 Applicants (${j.applicant_count || 0})</button>`;
+    }
+
+    return `
+    <div class="job-card" id="card-${j.id}">
+        <div class="job-card-header">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div class="job-title">${esc(j.role_title)}</div>
+                ${statusBadge}
+            </div>
+            <div class="job-meta">${pills}</div>
+        </div>
+        <div class="job-card-body">
+            <div class="job-stats">
+                <div class="stat-item"><div class="val">${j.applicant_count || 0}</div><div class="lbl">Applicants</div></div>
+                <div class="stat-item"><div class="val">${j.time_limit_minutes || '—'}</div><div class="lbl">Minutes</div></div>
+                <div class="stat-item"><div class="val">${j.passing_threshold || 70}%</div><div class="lbl">Pass Score</div></div>
+            </div>
+            <div class="date-text">Created: ${created} &nbsp;·&nbsp; ${expiry}</div>
+        </div>
+        <div class="job-card-footer">${actions}</div>
+    </div>`;
+}
+
+async function closeJob(jobId, title) {
+    if (!confirm(`Close "${title}"? Candidates will no longer be able to apply.`)) return;
+    try {
+        const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/${jobId}/close`, {
+            method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        loadJobs();
+    } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function reopenJob(jobId, title) {
+    if (!confirm(`Reopen "${title}"? Candidates will be able to apply again.`)) return;
+    try {
+        const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/${jobId}/reopen`, {
+            method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        loadJobs();
+    } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function publishDraft(jobId, title) {
+    if (!confirm(`Publish "${title}"?`)) return;
+    try {
+        const res = await fetch(`${CONFIG.BACKEND_URL}/jobs/${jobId}/publish`, {
+            method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        const portalLink = `${PORTAL_BASE}job-portal.html?job=${jobId}`;
+        alert(`✅ Published!\n\nShare this link with candidates:\n${portalLink}`);
+        loadJobs();
+    } catch (e) { alert('Error: ' + e.message); }
+}
+
+function viewApplicants(jobId) {
+    window.location.href = `dashboard.html?job_id=${jobId}`;
+}
+
+function editDraft(jobId) {
+    // Load draft into admin form
+    window.location.href = `admin.html?load_draft=${jobId}`;
+}
+
+function copyLink(link) {
+    navigator.clipboard.writeText(link)
+        .then(() => alert('Link copied!'))
+        .catch(() => { prompt('Copy this link:', link); });
+}
+
+function esc(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Load on page open
+loadJobs();
+</script>
+</body>
+</html>
