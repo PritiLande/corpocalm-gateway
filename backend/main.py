@@ -291,7 +291,7 @@ Respond ONLY with a valid JSON object in this exact format, nothing else:
 Where each score is an integer 0-100 matching each question in order."""
 
         response = groq_client.chat.completions.create(
-            model="llama-4-scout-17b-16e-instruct",
+            model="llama3-70b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=600
@@ -1074,7 +1074,7 @@ Rules:
 Return ONLY the 5 questions, one per line, nothing else."""
 
         response = groq_client.chat.completions.create(
-            model="llama-4-scout-17b-16e-instruct",
+            model="llama3-70b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=400
@@ -1129,7 +1129,7 @@ Requirements:
 Return ONLY the job description text, nothing else."""
 
         response = groq_client.chat.completions.create(
-            model="llama-4-scout-17b-16e-instruct",
+            model="llama3-70b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=300
@@ -1180,7 +1180,7 @@ Rules:
 Return ONLY the comma-separated skills list, nothing else."""
 
         response = groq_client.chat.completions.create(
-            model="llama-4-scout-17b-16e-instruct",
+            model="llama3-70b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=150
@@ -1240,7 +1240,7 @@ Rules:
 - No markdown, no code blocks, return raw JSON only"""
 
         response = groq_client.chat.completions.create(
-            model="llama-4-scout-17b-16e-instruct",
+            model="llama3-70b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.6,
             max_tokens=900
