@@ -48,18 +48,22 @@ HR_EMAIL      = os.getenv("HR_EMAIL", "")
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in .env")
 
-# Supabase HTTP client — secure TLS defaults
-_http_client = httpx.Client()
+# SSL verification — disable only for local Windows dev via SSL_VERIFY=false in .env
+# In production this should always be True (default)
+_ssl_verify = os.getenv("SSL_VERIFY", "true").lower() != "false"
+
+# Supabase HTTP client
+_http_client = httpx.Client(verify=_ssl_verify)
 supabase: Client = create_client(
     SUPABASE_URL,
     SUPABASE_KEY,
     options=SyncClientOptions(httpx_client=_http_client)
 )
 
-# Groq AI client — secure TLS defaults
+# Groq AI client
 groq_client = Groq(
     api_key=GROQ_API_KEY,
-    http_client=httpx.Client()
+    http_client=httpx.Client(verify=_ssl_verify)
 ) if GROQ_API_KEY else None
 
 # ── Auth setup ──
