@@ -291,7 +291,7 @@ Respond ONLY with a valid JSON object in this exact format, nothing else:
 Where each score is an integer 0-100 matching each question in order."""
 
         response = groq_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=600
@@ -502,6 +502,77 @@ def send_interview_scheduled_email(candidate_name: str, candidate_email: str, ro
         print(f"[Email Warning] Interview scheduled email failed: {e}")
 
 
+def send_hired_email(candidate_name: str, candidate_email: str, role_title: str, notes: str = ""):
+    """Congratulates the candidate on being hired after their interview."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return
+    try:
+        subject = f"Congratulations! You've Been Selected — {role_title} | CorpoCalm Gateway"
+        notes_block = f"""
+                <div style="background:#e8f5e9;border-left:4px solid #2e7d32;padding:14px 16px;border-radius:4px;margin-top:16px;">
+                    <strong>Next Steps:</strong><br>
+                    <span style="white-space:pre-wrap;">{notes}</span>
+                </div>""" if notes.strip() else ""
+        body = f"""
+        <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#1b5e20,#2e7d32);padding:24px;color:white;text-align:center;">
+                <h2 style="margin:0;">CorpoCalm Gateway</h2>
+                <p style="margin:4px 0 0;opacity:0.85;font-size:13px;">Offer Extended</p>
+            </div>
+            <div style="padding:28px 24px;">
+                <p>Dear <strong>{candidate_name}</strong>,</p>
+                <p style="margin-top:12px;">We are delighted to inform you that you have been <strong style="color:#2e7d32;">selected</strong> for the position of <strong>{role_title}</strong>.</p>
+                <p style="margin-top:12px;">Congratulations! Our team will be in touch shortly with the formal offer and onboarding details.{notes_block}</p>
+                <p style="margin-top:16px;">We look forward to welcoming you to the team!</p>
+                <p style="margin-top:24px;color:#aaa;font-size:12px;">Please do not reply to this email — our HR team will contact you directly.</p>
+            </div>
+            <div style="background:#f5f5f5;padding:14px;text-align:center;font-size:11px;color:#aaa;">
+                CorpoCalm Gateway &nbsp;|&nbsp; Built by Priti Ganesh Lande
+            </div>
+        </div>"""
+        _send_email(candidate_email, subject, body)
+    except Exception as e:
+        print(f"[Email Warning] Hired email failed: {e}")
+
+
+def send_post_interview_rejection_email(candidate_name: str, candidate_email: str, role_title: str, notes: str = ""):
+    """
+    Notifies candidate they were not selected after their interview.
+    Distinct tone from send_rejected_email (application-stage rejection) —
+    this one acknowledges the interview took place and is more personal.
+    """
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return
+    try:
+        subject = f"Update on Your Interview — {role_title} | CorpoCalm Gateway"
+        notes_block = f"""
+                <div style="background:#f5f5f5;border-left:4px solid #90a4ae;padding:14px 16px;border-radius:4px;margin-top:16px;">
+                    <strong>Feedback:</strong><br>
+                    <span style="white-space:pre-wrap;">{notes}</span>
+                </div>""" if notes.strip() else ""
+        body = f"""
+        <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#37474f,#546e7a);padding:24px;color:white;text-align:center;">
+                <h2 style="margin:0;">CorpoCalm Gateway</h2>
+                <p style="margin:4px 0 0;opacity:0.85;font-size:13px;">Interview Outcome</p>
+            </div>
+            <div style="padding:28px 24px;">
+                <p>Dear <strong>{candidate_name}</strong>,</p>
+                <p style="margin-top:12px;">Thank you for attending the interview for the position of <strong>{role_title}</strong> and for the time and effort you invested in the process.</p>
+                <p style="margin-top:12px;">After careful consideration, we have decided to move forward with another candidate whose profile more closely matches our current requirements.{notes_block}</p>
+                <p style="margin-top:12px;">This was a difficult decision — we were impressed by your background and encourage you to apply for future opportunities with us.</p>
+                <p style="margin-top:12px;">We wish you the very best in your career.</p>
+                <p style="margin-top:24px;color:#aaa;font-size:12px;">Please do not reply to this email.</p>
+            </div>
+            <div style="background:#f5f5f5;padding:14px;text-align:center;font-size:11px;color:#aaa;">
+                CorpoCalm Gateway &nbsp;|&nbsp; Built by Priti Ganesh Lande
+            </div>
+        </div>"""
+        _send_email(candidate_email, subject, body)
+    except Exception as e:
+        print(f"[Email Warning] Post-interview rejection email failed: {e}")
+
+
 def send_welcome_email(hr_name: str, hr_email: str, company_name: str):
     """Welcome email sent to HR on signup."""
     if not SMTP_USER or not SMTP_PASSWORD:
@@ -572,11 +643,12 @@ def send_assessment_assigned_email(candidate_email: str, role_title: str, compan
 
 def _send_email(to_email: str, subject: str, html_body: str):
     """Shared SMTP send helper."""
+    from email.header import Header
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
+    msg["Subject"] = Header(subject, "utf-8")
     msg["From"]    = SMTP_USER
     msg["To"]      = to_email
-    msg.attach(MIMEText(html_body, "html"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
         server.starttls()
         server.login(SMTP_USER, SMTP_PASSWORD)
@@ -845,6 +917,22 @@ def invite_team_member(data: InviteMemberRequest, hr=Depends(get_current_hr)):
     if existing.data:
         raise HTTPException(status_code=400, detail="This email is already registered.")
 
+    # Block inviting a candidate — their email exists in applications for this company's jobs
+    candidate_check = supabase.table("applications")\
+        .select("id, job_id")\
+        .eq("candidate_email", data.email)\
+        .execute()
+    if candidate_check.data:
+        # Verify at least one application belongs to this company's jobs
+        company_jobs = supabase.table("jobs").select("id").eq("company_id", company_id).execute()
+        company_job_ids = {str(j["id"]) for j in (company_jobs.data or [])}
+        is_candidate = any(str(a["job_id"]) in company_job_ids for a in candidate_check.data)
+        if is_candidate:
+            raise HTTPException(
+                status_code=400,
+                detail="This email belongs to a candidate who applied to your company. You cannot invite them as an HR member."
+            )
+
     # Check for existing pending invite
     existing_invite = supabase.table("team_invites")\
         .select("id")\
@@ -962,6 +1050,7 @@ def list_invites(hr=Depends(get_current_hr)):
     res = supabase.table("team_invites")\
         .select("id, invited_email, status, created_at, expires_at")\
         .eq("company_id", company_id)\
+        .eq("status", "pending")\
         .order("created_at", desc=True)\
         .execute()
 
@@ -1020,7 +1109,7 @@ def _send_team_invite_email(to_email: str, inviter_name: str, company_name: str,
     try:
         # The frontend accept-invite page
         invite_link = f"{FRONTEND_URL or 'http://localhost:5500/frontend'}/accept-invite.html?token={invite_token}"
-        subject = f"You're invited to join {company_name} on CorpoCalm Gateway"
+        subject = f"You are invited to join {company_name} on CorpoCalm Gateway"
         body = f"""
         <div style="font-family:sans-serif;max-width:520px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
             <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:24px;color:white;text-align:center;">
@@ -1042,6 +1131,76 @@ def _send_team_invite_email(to_email: str, inviter_name: str, company_name: str,
         _send_email(to_email, subject, body)
     except Exception as e:
         print(f"[Email Warning] Team invite email failed: {e}")
+
+
+# ──────────────────────────────────────────
+# HR PROFILE / ACCOUNT ENDPOINTS
+# ──────────────────────────────────────────
+
+class UpdateProfileRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120, description="HR user's display name")
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password:     str = Field(..., min_length=6, max_length=72)
+    confirm_password: str = Field(..., min_length=6, max_length=72)
+
+
+@app.get("/hr/me", summary="Get current HR user's profile info")
+def get_my_profile(hr=Depends(get_current_hr)):
+    """Returns the logged-in HR user's profile: name, email, company name, role."""
+    return {
+        "id":           hr["sub"],
+        "name":         hr["name"],
+        "email":        hr["email"],
+        "company_name": hr["company_name"],
+        "role":         hr["role"],
+    }
+
+
+@app.patch("/hr/me", summary="Update current HR user's display name")
+def update_my_profile(data: UpdateProfileRequest, hr=Depends(get_current_hr)):
+    """Allows the logged-in HR user to update their own display name."""
+    res = supabase.table("hr_users")\
+        .update({"name": data.name.strip()})\
+        .eq("id", hr["sub"])\
+        .execute()
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Account not found.")
+
+    return {"message": "Name updated successfully.", "name": data.name.strip()}
+
+
+@app.post("/hr/change-password", summary="Change the current HR user's password")
+def change_password(data: ChangePasswordRequest, hr=Depends(get_current_hr)):
+    """
+    Allows the logged-in HR user to change their own password.
+    Requires current password for verification — same pattern as /hr/reset-password
+    but scoped to the authenticated user rather than a reset token.
+    """
+    if data.new_password != data.confirm_password:
+        raise HTTPException(status_code=400, detail="New passwords do not match.")
+
+    # Fetch current password hash from DB
+    hr_res = supabase.table("hr_users")\
+        .select("password_hash")\
+        .eq("id", hr["sub"])\
+        .execute()
+
+    if not hr_res.data:
+        raise HTTPException(status_code=404, detail="Account not found.")
+
+    if not verify_password(data.current_password, hr_res.data[0]["password_hash"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    new_hash = hash_password(data.new_password)
+    supabase.table("hr_users")\
+        .update({"password_hash": new_hash})\
+        .eq("id", hr["sub"])\
+        .execute()
+
+    return {"message": "Password changed successfully."}
 
 
 # ──────────────────────────────────────────
@@ -1074,7 +1233,7 @@ Rules:
 Return ONLY the 5 questions, one per line, nothing else."""
 
         response = groq_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=400
@@ -1129,7 +1288,7 @@ Requirements:
 Return ONLY the job description text, nothing else."""
 
         response = groq_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=300
@@ -1180,7 +1339,7 @@ Rules:
 Return ONLY the comma-separated skills list, nothing else."""
 
         response = groq_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=150
@@ -1240,7 +1399,7 @@ Rules:
 - No markdown, no code blocks, return raw JSON only"""
 
         response = groq_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.6,
             max_tokens=900
@@ -1849,12 +2008,33 @@ def update_hr_status(application_id: str, data: HRStatusUpdate, hr=Depends(get_c
     if not update_data:
         raise HTTPException(status_code=400, detail="Nothing to update")
 
+    # Fetch current record so we can guard against duplicate status-change emails.
+    # If the candidate is already in the requested status, skip the DB write and
+    # return immediately — the action is already applied (idempotent).
+    current_res = supabase.table("applications")\
+        .select("id, hr_status, candidate_name, candidate_email, job_id")\
+        .eq("id", application_id)\
+        .single()\
+        .execute()
+    if not current_res.data:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    current_hr_status = current_res.data.get("hr_status")
+
+    # If the incoming hr_status is the same as what's already stored, this is a
+    # duplicate action — skip the write entirely and report back with the current
+    # status so the frontend can stay in sync.
+    if data.hr_status is not None and data.hr_status == current_hr_status:
+        return {"message": "Status already set", "hr_status": current_hr_status, "already_set": True}
+
     res = supabase.table("applications").update(update_data).eq("id", application_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    # Send shortlisted email if status changed to Shortlisted
-    if data.hr_status == "Shortlisted":
+    # Send notification email only when the status is genuinely changing.
+    # Using current_hr_status (before update) vs data.hr_status (requested) ensures
+    # the email fires exactly once per transition, not on every API call.
+    if data.hr_status == "Shortlisted" and current_hr_status != "Shortlisted":
         app_info = res.data[0]
         job_res = supabase.table("jobs").select("role_title").eq("id", app_info.get("job_id","")).execute()
         role_title = job_res.data[0]["role_title"] if job_res.data else "the position"
@@ -1864,7 +2044,7 @@ def update_hr_status(application_id: str, data: HRStatusUpdate, hr=Depends(get_c
             role_title=role_title
         )
 
-    if data.hr_status == "Rejected":
+    if data.hr_status == "Rejected" and current_hr_status != "Rejected":
         app_info = res.data[0]
         job_res = supabase.table("jobs").select("role_title").eq("id", app_info.get("job_id","")).execute()
         role_title = job_res.data[0]["role_title"] if job_res.data else "the position"
@@ -1874,7 +2054,147 @@ def update_hr_status(application_id: str, data: HRStatusUpdate, hr=Depends(get_c
             role_title=role_title
         )
 
-    return {"message": "Updated successfully"}
+    return {"message": "Updated successfully", "hr_status": data.hr_status, "already_set": False}
+
+
+# ──────────────────────────────────────────
+# INTERVIEW SCHEDULING ENDPOINT
+# ──────────────────────────────────────────
+
+class ScheduleInterviewRequest(BaseModel):
+    interview_date: str = Field(..., min_length=1, max_length=100, description="e.g. Aug 30, 2026")
+    interview_time: str = Field(..., min_length=1, max_length=100, description="e.g. 3:00 PM IST")
+    interview_link: Optional[str] = Field(None, max_length=500, description="Meeting URL (optional)")
+    notes:          Optional[str] = Field(None, max_length=1000, description="Additional instructions (optional)")
+
+
+@app.patch("/applications/{application_id}/schedule-interview", summary="Schedule an interview for a shortlisted candidate")
+def schedule_interview(application_id: str, data: ScheduleInterviewRequest, hr=Depends(get_current_hr)):
+    """
+    Stores interview date/time/link on the application and sends the candidate
+    a notification email. Only works when the candidate is already Shortlisted.
+    Idempotent — rescheduling overwrites the stored details and re-sends the email.
+    Follows the same multi-tenant scoping pattern as update_hr_status.
+    """
+    company_id = require_company_id(hr)
+    application = verify_application_ownership(application_id, company_id)
+
+    # Allow scheduling for Shortlisted candidates AND rescheduling for already-scheduled ones.
+    if application.get("hr_status") not in ("Shortlisted", "Interview Scheduled"):
+        raise HTTPException(
+            status_code=400,
+            detail="Interview can only be scheduled for Shortlisted or Interview Scheduled candidates."
+        )
+
+    # Persist interview details on the application record
+    update_data = {
+        "hr_status":      "Interview Scheduled",
+        "interview_date": data.interview_date.strip(),
+        "interview_time": data.interview_time.strip(),
+        "interview_link": data.interview_link.strip() if data.interview_link else None,
+    }
+
+    res = supabase.table("applications").update(update_data).eq("id", application_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to update application.")
+
+    # Fetch job title for the email
+    job_res = supabase.table("jobs").select("role_title").eq("id", application["job_id"]).execute()
+    role_title = job_res.data[0]["role_title"] if job_res.data else "the position"
+
+    # Build the interview_details string for the email body
+    details_lines = [
+        f"Date: {data.interview_date.strip()}",
+        f"Time: {data.interview_time.strip()}",
+    ]
+    if data.interview_link and data.interview_link.strip():
+        details_lines.append(f"Meeting Link: {data.interview_link.strip()}")
+    if data.notes and data.notes.strip():
+        details_lines.append(f"\nAdditional Notes:\n{data.notes.strip()}")
+
+    send_interview_scheduled_email(
+        candidate_name=application.get("candidate_name", "Candidate"),
+        candidate_email=application.get("candidate_email", ""),
+        role_title=role_title,
+        interview_details="\n".join(details_lines)
+    )
+
+    return {
+        "message":        "Interview scheduled successfully.",
+        "hr_status":      "Interview Scheduled",
+        "interview_date": data.interview_date.strip(),
+        "interview_time": data.interview_time.strip(),
+        "interview_link": data.interview_link.strip() if data.interview_link else None,
+    }
+
+
+# ──────────────────────────────────────────
+# INTERVIEW OUTCOME ENDPOINT
+# ──────────────────────────────────────────
+
+class InterviewOutcomeRequest(BaseModel):
+    outcome: str = Field(..., description="'Hired' or 'Not Selected'")
+    notes:   Optional[str] = Field(None, max_length=1000, description="Optional next-steps (Hired) or feedback (Not Selected)")
+
+
+@app.patch("/applications/{application_id}/interview-outcome", summary="Record post-interview outcome")
+def record_interview_outcome(application_id: str, data: InterviewOutcomeRequest, hr=Depends(get_current_hr)):
+    """
+    Sets the final outcome after an interview.
+    Only actionable when hr_status is 'Interview Scheduled'.
+    Idempotent — if outcome already set (Hired / Not Selected), returns early
+    without re-sending the email or re-writing the DB.
+    Follows the same multi-tenant scoping as update_hr_status.
+    """
+    if data.outcome not in ("Hired", "Not Selected"):
+        raise HTTPException(status_code=400, detail="Outcome must be 'Hired' or 'Not Selected'.")
+
+    company_id = require_company_id(hr)
+    application = verify_application_ownership(application_id, company_id)
+
+    current_status = application.get("hr_status")
+
+    # Idempotent guard — if outcome is already recorded, return early.
+    if current_status == data.outcome:
+        return {"message": "Outcome already set.", "hr_status": current_status, "already_set": True}
+
+    # Only allow outcome recording when interview has been scheduled.
+    if current_status != "Interview Scheduled":
+        raise HTTPException(
+            status_code=400,
+            detail="Outcome can only be recorded for candidates with status 'Interview Scheduled'."
+        )
+
+    res = supabase.table("applications")\
+        .update({"hr_status": data.outcome})\
+        .eq("id", application_id)\
+        .execute()
+
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to update application.")
+
+    # Fetch job title for the email
+    job_res = supabase.table("jobs").select("role_title").eq("id", application["job_id"]).execute()
+    role_title = job_res.data[0]["role_title"] if job_res.data else "the position"
+
+    notes_str = (data.notes or "").strip()
+
+    if data.outcome == "Hired":
+        send_hired_email(
+            candidate_name=application.get("candidate_name", "Candidate"),
+            candidate_email=application.get("candidate_email", ""),
+            role_title=role_title,
+            notes=notes_str
+        )
+    else:
+        send_post_interview_rejection_email(
+            candidate_name=application.get("candidate_name", "Candidate"),
+            candidate_email=application.get("candidate_email", ""),
+            role_title=role_title,
+            notes=notes_str
+        )
+
+    return {"message": f"Outcome recorded: {data.outcome}.", "hr_status": data.outcome, "already_set": False}
 
 
 # ──────────────────────────────────────────
